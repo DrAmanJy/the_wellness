@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: 'en-US'
+tone_instructions: 'Assertive, professional, and focusing on high-signal findings.'
+early_access: false
+
+reviews:
+  profile: 'assertive'
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    - '!**/node_modules/**'
+    - '!**/dist/**'
+    - '!**/.turbo/**'
+    - '!**/coverage/**'
+    - '!**/*.map'
+
+  instructions: |
+    Use `AGENTS.md` in the repository root as the primary source of coding and architecture rules.
+    Focus on correctness, security, performance, architecture, DB integrity, auth/RBAC, and payments.
+    Do not review stylistic formatting (quotes, semicolons, line length) as Prettier and ESLint handle this.
+    Do not automatically generate commits or fix code. Just provide the review.
+
+    Custom High-Value Checks:
+    1. No authentication/authorization bypass.
+    2. No client-controlled admin/employee role assignment.
+    3. No hardcoded secrets.
+    4. No password authentication implementation.
+    5. No payment verification based solely on client input.
+    6. No unverified Razorpay webhook processing.
+    7. No `any` in TypeScript source.
+    8. No sensitive token logging.
+    9. No direct database access that bypasses established package boundaries.
+
+  path_instructions:
+    - path: 'apps/api/**/*.ts'
+      instructions: 'Check for TypeScript strictness, correct async/await, unhandled promises, security boundaries, and N+1 queries.'
+    - path: 'packages/auth/**/*.ts'
+      instructions: 'Focus on OAuth security, session validation, authentication/authorization bypasses, and token leakage. NEVER suggest adding password authentication.'
+    - path: 'packages/db/**/*.ts'
+      instructions: 'Check for SQL injection, incorrect query construction, missing foreign keys/unique constraints, and race conditions.'
+    - path: 'drizzle/**/*.sql'
+      instructions: 'Focus on destructive schema changes, dangerous migrations, and data integrity.'
+    - path: '**/*payment*.ts'
+      instructions: 'Focus on Razorpay signature verification, webhook authenticity, idempotency, amount tampering, and secret exposure.'
+    - path: 'apps/api/src/routes/**/*.ts'
+      instructions: 'Check authentication/authorization requirements, Zod usage, rate limiting, and HTTP status correctness.'
+    - path: '**/*.test.ts'
+      instructions: 'Ensure security-sensitive edge cases are tested. Tests must be deterministic and must not rely on real credentials or providers.'
+    - path: '**/.env*'
+      instructions: 'Check for hardcoded secrets, API keys, database credentials. NEVER expose actual secrets in review comments.'
+
+chat:
+  auto_reply: true

@@ -1,0 +1,36 @@
+[config]
+# Don't auto-modify code, just review
+publish_output = true
+publish_output_progress = true
+
+[pr_reviewer]
+require_score_review = false
+require_tests_review = false
+require_estimate_effort_to_review = false
+extra_instructions = """
+Use `AGENTS.md` in the repository root as the primary source of coding and architecture rules.
+Focus on correctness, security, performance, architecture, DB integrity, auth/RBAC, and payments.
+Do not review stylistic formatting (quotes, semicolons, line length) as Prettier and ESLint handle this.
+Do not automatically generate commits or fix code. Just provide the review.
+
+Review Focus Priorities:
+CRITICAL: Authentication vulnerabilities, Authorization bypass, Payment security, SQL injection, Secrets, Data corruption, Race conditions
+HIGH: Incorrect business logic, Transaction problems, Session problems, Broken RBAC, Database integrity issues, API contract violations
+MEDIUM: Performance problems, Error handling, Maintainability
+LOW: Minor code quality issues
+
+Monorepo Boundary Rules:
+- apps/api must not be a dependency for packages/*
+- packages/contracts and packages/utils must not depend on frameworks like Express or Drizzle
+"""
+
+[pr_code_suggestions]
+auto_commit = false
+extra_instructions = """
+Use `AGENTS.md` in the repository root as the primary source of coding and architecture rules.
+Never suggest password authentication. App is OAuth-only.
+Do not suggest formatting changes.
+"""
+
+[pr_description]
+publish_description_as_comment = true
