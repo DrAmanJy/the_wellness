@@ -39,9 +39,14 @@ app.use(
   }),
 );
 
+import categoryRoutes from './routes/category.routes';
+import productRoutes from './routes/product.routes';
+
 // Routes
 app.use('/api/auth', toNodeHandler(auth.handler));
 app.use('/health', healthRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/products', productRoutes);
 
 // Error Handling
 app.use(notFoundHandler);

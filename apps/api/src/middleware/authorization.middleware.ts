@@ -5,7 +5,7 @@ import { asyncHandler } from '@wellness/utils';
 
 export const resolveRoles = asyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth) {
+    if (!req.auth || !req.auth.userId) {
       throw new UnauthorizedError();
     }
 
@@ -22,7 +22,7 @@ export const resolveRoles = asyncHandler(
 
 export const requireRole = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth) {
+    if (!req.auth || !req.auth.roles) {
       throw new UnauthorizedError();
     }
 

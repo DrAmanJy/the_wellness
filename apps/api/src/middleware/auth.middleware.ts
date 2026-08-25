@@ -17,10 +17,17 @@ declare global {
   }
 }
 
+import { fromNodeHeaders } from 'better-auth/node';
+
 export const requireAuth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const session = await auth.api.getSession({
-    headers: req.headers as unknown as Headers,
-  });
+  let session;
+  try {
+    session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+  } catch (e) {
+    throw new UnauthorizedError();
+  }
 
   if (!session || !session.user || !session.session) {
     throw new UnauthorizedError();
