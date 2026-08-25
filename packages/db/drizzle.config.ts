@@ -5,7 +5,7 @@ import { resolve } from 'path';
 dotenv.config({ path: resolve(__dirname, '../../apps/api/.env') });
 
 export default defineConfig({
-  schema: './src/schema.ts',
+  schema: './src/schema/index.ts',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
