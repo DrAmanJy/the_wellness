@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
-
-import { db, role, userRole, user } from '@wellness/db';
+import { db, role, userRole, user, eq, and } from '@wellness/db';
 
 async function bootstrap() {
   const userId = process.argv[2];
@@ -34,14 +32,18 @@ async function bootstrap() {
           name: 'admin',
         })
         .returning();
+
+      if (!newRole) {
+        throw new Error('Failed to create admin role');
+      }
+
       adminRole = newRole;
       console.log('Created admin role.');
     }
 
     // Check if user already has admin role
     const existingUserRole = await db.query.userRole.findFirst({
-      where: (userRole, { and, eq }) =>
-        and(eq(userRole.userId, userId), eq(userRole.roleId, adminRole!.id)),
+      where: and(eq(userRole.userId, userId), eq(userRole.roleId, adminRole.id)),
     });
 
     if (existingUserRole) {
@@ -52,15 +54,18 @@ async function bootstrap() {
     // Assign admin role
     await db.insert(userRole).values({
       userId,
-      roleId: adminRole!.id,
+      roleId: adminRole.id,
     });
 
     console.log(`Successfully assigned admin role to user ${userId}.`);
     process.exit(0);
   } catch (error) {
     console.error('Bootstrap failed:', error);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 
-bootstrap();
+void bootstrap().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

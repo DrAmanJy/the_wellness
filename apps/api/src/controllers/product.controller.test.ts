@@ -1,19 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
 import { app } from '../app';
 import { factories } from '../test/factories';
-import { getResponseBody, ProductListResponse, ProductResponse } from '../test/test-utils';
-import { ProductDTO } from '@wellness/contracts';
+import { ProductListResponse, ProductResponse } from '../test/test-utils';
+import {} from '@wellness/contracts';
 
 describe('Product API Controllers', () => {
   let adminToken: string;
   let customerToken: string;
-  let adminId: string;
 
   beforeEach(async () => {
     // 1. Create an admin user and session
     const adminUser = await factories.createUser();
-    adminId = adminUser.id;
+
     await factories.assignRole(adminUser.id, 'admin');
     const adminSession = await factories.createSession(adminUser.id);
     adminToken = adminSession.token;
@@ -37,16 +37,16 @@ describe('Product API Controllers', () => {
       const res = await request(app).get('/api/products');
 
       expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
+      expect((res.body as ProductResponse).success).toBe(true);
 
       // Ensure only active product is returned
-      const slugs = res.body.data.items.map((p: any) => p.slug);
+      const slugs = (res.body as ProductListResponse).data.items.map((p) => p.slug);
       expect(slugs).toContain('active-prod');
       expect(slugs).not.toContain('draft-prod');
 
       // Validate pagination shape
-      expect(res.body.data).toHaveProperty('nextCursor');
-      expect(res.body.data).toHaveProperty('hasMore');
+      expect((res.body as ProductResponse).data).toHaveProperty('nextCursor');
+      expect((res.body as ProductResponse).data).toHaveProperty('hasMore');
     });
 
     it('handles limit and invalid limit queries correctly', async () => {
@@ -65,37 +65,41 @@ describe('Product API Controllers', () => {
       expect(res.status).toBe(400);
 
       // Malformed date within a valid JSON structure
-      const malformedCursor = Buffer.from(JSON.stringify({ createdAt: 'not-a-date', id: '123' })).toString('base64');
+      const malformedCursor = Buffer.from(
+        JSON.stringify({ createdAt: 'not-a-date', id: '123' }),
+      ).toString('base64');
       const res2 = await request(app).get(`/api/products?cursor=${malformedCursor}`);
       expect(res2.status).toBe(400);
     });
 
     it('produces distinct pages with no duplicates and deterministic ordering', async () => {
       await factories.createProduct({ name: 'P1', slug: 'p1', status: 'active' });
-      await new Promise(r => setTimeout(r, 10)); // Ensure different createdAt
+      await new Promise((r) => setTimeout(r, 10)); // Ensure different createdAt
       await factories.createProduct({ name: 'P2', slug: 'p2', status: 'active' });
-      await new Promise(r => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 10));
       await factories.createProduct({ name: 'P3', slug: 'p3', status: 'active' });
 
       const res1 = await request(app).get('/api/products?limit=2');
       expect(res1.status).toBe(200);
-      const page1 = getResponseBody<ProductListResponse>(res1).data.items;
+      const page1 = (res1.body as ProductListResponse).data.items;
       expect(page1.length).toBe(2);
 
-      const res2 = await request(app).get(`/api/products?limit=2&cursor=${getResponseBody<ProductListResponse>(res1).data.nextCursor}`);
+      const res2 = await request(app).get(
+        `/api/products?limit=2&cursor=${(res1.body as ProductListResponse).data.nextCursor ?? ''}`,
+      );
       expect(res2.status).toBe(200);
-      const page2 = getResponseBody<ProductListResponse>(res2).data.items;
+      const page2 = (res2.body as ProductListResponse).data.items;
       expect(page2.length).toBe(1);
 
-      const allIds = [...page1.map((p: ProductDTO) => p.id), ...page2.map((p: ProductDTO) => p.id)];
+      const allIds = [...page1.map((p) => p.id), ...page2.map((p) => p.id)];
       const uniqueIds = new Set(allIds);
       expect(uniqueIds.size).toBe(3); // No duplicates
-      
+
       // Verify ordering is deterministic (descending by createdAt, then descending by id)
       // Since P3 was created last (delay), it should be first in results
-      expect(page1[0].slug).toBe('p3');
-      expect(page1[1].slug).toBe('p2');
-      expect(page2[0].slug).toBe('p1');
+      expect(page1[0]?.slug).toBe('p3');
+      expect(page1[1]?.slug).toBe('p2');
+      expect(page2[0]?.slug).toBe('p1');
     });
   });
 
@@ -106,21 +110,27 @@ describe('Product API Controllers', () => {
       const res = await request(app).get('/api/products/find-me');
 
       expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.slug).toBe('find-me');
+      expect((res.body as ProductResponse).success).toBe(true);
+      expect((res.body as ProductResponse).data.slug).toBe('find-me');
     });
 
     it('returns 404 for draft/archived/deleted products', async () => {
       await factories.createProduct({ slug: 'hidden-draft', status: 'draft' });
       await factories.createProduct({ slug: 'hidden-archived', status: 'archived' });
-      const deletedProd = await factories.createProduct({ slug: 'hidden-deleted', status: 'active' });
-      
-      const { db, products } = await import('@wellness/db');
-      await db.update(products).set({ deletedAt: new Date() }).where(require('drizzle-orm').eq(products.id, deletedProd.id));
+      const deletedProd = await factories.createProduct({
+        slug: 'hidden-deleted',
+        status: 'active',
+      });
+
+      const { db, products, eq } = await import('@wellness/db');
+      await db
+        .update(products)
+        .set({ deletedAt: new Date() })
+        .where(eq(products.id, deletedProd.id));
 
       const res1 = await request(app).get('/api/products/hidden-draft');
       expect(res1.status).toBe(404);
-      
+
       const res2 = await request(app).get('/api/products/hidden-archived');
       expect(res2.status).toBe(404);
 
@@ -139,13 +149,11 @@ describe('Product API Controllers', () => {
       name: 'New Admin Product',
       slug: 'new-admin-product',
       description: 'Test description',
-      categoryIds: []
+      categoryIds: [],
     };
 
     it('rejects unauthenticated requests (401)', async () => {
-      const res = await request(app)
-        .post('/api/products')
-        .send(validPayload);
+      const res = await request(app).post('/api/products').send(validPayload);
 
       expect(res.status).toBe(401);
     });
@@ -166,8 +174,8 @@ describe('Product API Controllers', () => {
         .send(validPayload);
 
       expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.slug).toBe('new-admin-product');
+      expect((res.body as ProductResponse).success).toBe(true);
+      expect((res.body as ProductResponse).data.slug).toBe('new-admin-product');
     });
 
     it('returns 409 for duplicate slug', async () => {
@@ -179,138 +187,144 @@ describe('Product API Controllers', () => {
         .send({ ...validPayload, slug: 'duplicate-admin' });
 
       expect(res.status).toBe(409);
+    });
+
+    describe('PATCH /api/products/:id', () => {
+      it('updates product successfully as admin', async () => {
+        const p = await factories.createProduct({ name: 'Old' });
+        const res = await request(app)
+          .patch(`/api/products/${p.id}`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`])
+          .send({ name: 'New' });
+
+        expect(res.status).toBe(200);
+        expect((res.body as ProductResponse).success).toBe(true);
+        expect((res.body as ProductResponse).data.name).toBe('New');
+      });
+
+      it('rejects unauthenticated requests for update', async () => {
+        const res = await request(app).patch('/api/products/00000000-0000-0000-0000-000000000000');
+        expect(res.status).toBe(401);
+      });
+    });
+
+    describe('DELETE /api/products/:id', () => {
+      it('deletes product successfully as admin', async () => {
+        const p = await factories.createProduct();
+        const res = await request(app)
+          .delete(`/api/products/${p.id}`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`]);
+
+        expect(res.status).toBe(200);
+        expect((res.body as ProductResponse).success).toBe(true);
+        expect((res.body as ProductResponse).data.deletedAt).toBeDefined();
+      });
+
+      it('rejects unauthenticated requests for delete', async () => {
+        const res = await request(app).delete('/api/products/00000000-0000-0000-0000-000000000000');
+        expect(res.status).toBe(401);
+      });
+    });
+
+    describe('PUT /api/products/:id/categories', () => {
+      it('updates categories successfully as admin', async () => {
+        const p = await factories.createProduct();
+        const c = await factories.createCategory();
+
+        const res = await request(app)
+          .put(`/api/products/${p.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`])
+          .send({ categoryIds: [c.id], primaryCategoryId: c.id });
+
+        expect(res.status).toBe(200);
+        expect((res.body as ProductResponse).success).toBe(true);
+      });
+
+      it('returns 409 if primary is not in assigned list', async () => {
+        const p = await factories.createProduct();
+        const c = await factories.createCategory();
+        const c2 = await factories.createCategory();
+
+        const res = await request(app)
+          .put(`/api/products/${p.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`])
+          .send({ categoryIds: [c.id], primaryCategoryId: c2.id });
+
+        expect(res.status).toBe(409); // Changed to 409 to match controller fix expectations
+      });
+
+      it('rejects unauthenticated and customer requests for update categories', async () => {
+        const p = await factories.createProduct();
+        const res1 = await request(app).put(`/api/products/${p.id}/categories`);
+        expect(res1.status).toBe(401);
+
+        const res2 = await request(app)
+          .put(`/api/products/${p.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${customerToken}`]);
+        expect(res2.status).toBe(403);
+      });
+
+      it('returns 400 for malformed body and invalid UUID in update categories', async () => {
+        const p = await factories.createProduct();
+        const res1 = await request(app)
+          .put(`/api/products/${p.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`])
+          .send({ categoryIds: 'not-an-array' });
+        expect(res1.status).toBe(400);
+
+        const res2 = await request(app)
+          .put(`/api/products/${p.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`])
+          .send({ categoryIds: ['invalid-uuid'] });
+        expect(res2.status).toBe(400);
+      });
+
+      it('updates categories successfully as employee', async () => {
+        const employeeUser = await factories.createUser();
+        await factories.assignRole(employeeUser.id, 'employee');
+        const employeeSession = await factories.createSession(employeeUser.id);
+
+        const p = await factories.createProduct();
+        const c = await factories.createCategory();
+
+        const res = await request(app)
+          .put(`/api/products/${p.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${employeeSession.token}`])
+          .send({ categoryIds: [c.id], primaryCategoryId: c.id });
+
+        expect(res.status).toBe(200);
+      }, 10000);
+
+      it('returns 409 when assigning deleted category or to deleted product', async () => {
+        const p = await factories.createProduct();
+        const deletedCat = await factories.createCategory();
+        const { db, categories, products, eq } = await import('@wellness/db');
+        await db
+          .update(categories)
+          .set({ deletedAt: new Date() })
+          .where(eq(categories.id, deletedCat.id));
+
+        const res1 = await request(app)
+          .put(`/api/products/${p.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`])
+          .send({ categoryIds: [deletedCat.id], primaryCategoryId: deletedCat.id });
+
+        expect(res1.status).toBe(409); // Domain error
+
+        const deletedProd = await factories.createProduct();
+        await db
+          .update(products)
+          .set({ deletedAt: new Date() })
+          .where(eq(products.id, deletedProd.id));
+        const validCat = await factories.createCategory();
+
+        const res2 = await request(app)
+          .put(`/api/products/${deletedProd.id}/categories`)
+          .set('Cookie', [`better-auth.session_token=${adminToken}`])
+          .send({ categoryIds: [validCat.id], primaryCategoryId: validCat.id });
+
+        expect(res2.status).toBe(404); // Product not found returns 404 because service checks existence
+      });
+    });
   });
-
-  describe('PATCH /api/products/:id', () => {
-    it('updates product successfully as admin', async () => {
-      const p = await factories.createProduct({ name: 'Old' });
-      const res = await request(app)
-        .patch(`/api/products/${p.id}`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`])
-        .send({ name: 'New' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.name).toBe('New');
-    });
-
-    it('rejects unauthenticated requests for update', async () => {
-      const res = await request(app).patch('/api/products/00000000-0000-0000-0000-000000000000');
-      expect(res.status).toBe(401);
-    });
-  });
-
-  describe('DELETE /api/products/:id', () => {
-    it('deletes product successfully as admin', async () => {
-      const p = await factories.createProduct();
-      const res = await request(app)
-        .delete(`/api/products/${p.id}`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`]);
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.deletedAt).toBeDefined();
-    });
-
-    it('rejects unauthenticated requests for delete', async () => {
-      const res = await request(app).delete('/api/products/00000000-0000-0000-0000-000000000000');
-      expect(res.status).toBe(401);
-    });
-  });
-
-  describe('PUT /api/products/:id/categories', () => {
-    it('updates categories successfully as admin', async () => {
-      const p = await factories.createProduct();
-      const c = await factories.createCategory();
-
-      const res = await request(app)
-        .put(`/api/products/${p.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`])
-        .send({ categoryIds: [c.id], primaryCategoryId: c.id });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-    });
-
-    it('returns 409 if primary is not in assigned list', async () => {
-      const p = await factories.createProduct();
-      const c = await factories.createCategory();
-      const c2 = await factories.createCategory();
-
-      const res = await request(app)
-        .put(`/api/products/${p.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`])
-        .send({ categoryIds: [c.id], primaryCategoryId: c2.id });
-
-      expect(res.status).toBe(409); // Changed to 409 to match controller fix expectations
-    });
-
-    it('rejects unauthenticated and customer requests for update categories', async () => {
-      const p = await factories.createProduct();
-      const res1 = await request(app).put(`/api/products/${p.id}/categories`);
-      expect(res1.status).toBe(401);
-
-      const res2 = await request(app)
-        .put(`/api/products/${p.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${customerToken}`]);
-      expect(res2.status).toBe(403);
-    });
-
-    it('returns 400 for malformed body and invalid UUID in update categories', async () => {
-      const p = await factories.createProduct();
-      const res1 = await request(app)
-        .put(`/api/products/${p.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`])
-        .send({ categoryIds: 'not-an-array' });
-      expect(res1.status).toBe(400);
-
-      const res2 = await request(app)
-        .put(`/api/products/${p.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`])
-        .send({ categoryIds: ['invalid-uuid'] });
-      expect(res2.status).toBe(400);
-    });
-
-    it('updates categories successfully as employee', async () => {
-      const employeeUser = await factories.createUser();
-      await factories.assignRole(employeeUser.id, 'employee');
-      const employeeSession = await factories.createSession(employeeUser.id);
-
-      const p = await factories.createProduct();
-      const c = await factories.createCategory();
-
-      const res = await request(app)
-        .put(`/api/products/${p.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${employeeSession.token}`])
-        .send({ categoryIds: [c.id], primaryCategoryId: c.id });
-
-      expect(res.status).toBe(200);
-    }, 10000);
-
-    it('returns 409 when assigning deleted category or to deleted product', async () => {
-      const p = await factories.createProduct();
-      const deletedCat = await factories.createCategory();
-      const { db, categories, products } = await import('@wellness/db');
-      await db.update(categories).set({ deletedAt: new Date() }).where(require('drizzle-orm').eq(categories.id, deletedCat.id));
-
-      const res1 = await request(app)
-        .put(`/api/products/${p.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`])
-        .send({ categoryIds: [deletedCat.id], primaryCategoryId: deletedCat.id });
-      
-      expect(res1.status).toBe(409); // Domain error
-
-      const deletedProd = await factories.createProduct();
-      await db.update(products).set({ deletedAt: new Date() }).where(require('drizzle-orm').eq(products.id, deletedProd.id));
-      const validCat = await factories.createCategory();
-
-      const res2 = await request(app)
-        .put(`/api/products/${deletedProd.id}/categories`)
-        .set('Cookie', [`better-auth.session_token=${adminToken}`])
-        .send({ categoryIds: [validCat.id], primaryCategoryId: validCat.id });
-
-      expect(res2.status).toBe(404); // Product not found returns 404 because service checks existence
-    });
-  });
-});
 });

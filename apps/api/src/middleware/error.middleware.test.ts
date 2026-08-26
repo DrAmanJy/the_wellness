@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, MockInstance } from 'vitest';
 
 import { AppError } from '@wellness/utils';
 
@@ -17,20 +17,20 @@ describe('Error Middleware', () => {
   let req: Partial<Request>;
   let res: Partial<Response>;
   let next: NextFunction;
-  let statusMock: any;
-  let jsonMock: any;
+  let statusMock: MockInstance;
+  let jsonMock: MockInstance;
 
   beforeEach(() => {
-    req = { id: 'req-123' } as any;
+    req = { id: 'req-123' } as Partial<Request>;
     jsonMock = vi.fn();
     statusMock = vi.fn().mockReturnValue({ json: jsonMock });
-    res = { status: statusMock };
+    res = { status: statusMock as unknown as (code: number) => Response } as Partial<Response>;
     next = vi.fn();
   });
 
   it('maps AppError correctly', () => {
     const error = new AppError(400, 'CUSTOM_ERROR', 'Custom Error');
-    
+
     errorHandler(error, req as Request, res as Response, next);
 
     expect(statusMock).toHaveBeenCalledWith(400);
@@ -39,15 +39,16 @@ describe('Error Middleware', () => {
       error: {
         code: 'CUSTOM_ERROR',
         message: 'Custom Error',
-      }
+      },
     });
   });
 
   it('maps ZodError correctly', () => {
-    const error = new Error('Zod Validation Failed');
-    error.name = 'ZodError';
-    (error as any).errors = [{ path: ['field'], message: 'Required' }];
-    
+    const error = Object.assign(new Error('Zod Validation Failed'), {
+      name: 'ZodError',
+      errors: [{ path: ['field'], message: 'Required' }],
+    });
+
     errorHandler(error, req as Request, res as Response, next);
 
     expect(statusMock).toHaveBeenCalledWith(400);
@@ -57,14 +58,13 @@ describe('Error Middleware', () => {
         code: 'VALIDATION_ERROR',
         message: 'Validation failed',
       },
-      errors: [{ path: ['field'], message: 'Required' }]
+      errors: [{ path: ['field'], message: 'Required' }],
     });
   });
 
   it('maps Postgres unique constraint violation (23505) to 409', () => {
-    const error = new Error('duplicate key value');
-    (error as any).code = '23505';
-    
+    const error = Object.assign(new Error('duplicate key value'), { code: '23505' });
+
     errorHandler(error, req as Request, res as Response, next);
 
     expect(statusMock).toHaveBeenCalledWith(409);
@@ -73,14 +73,13 @@ describe('Error Middleware', () => {
       error: {
         code: 'CONFLICT',
         message: 'A resource with that identifier already exists',
-      }
+      },
     });
   });
 
   it('maps Postgres invalid text representation (22P02) to 400', () => {
-    const error = new Error('invalid uuid');
-    (error as any).code = '22P02';
-    
+    const error = Object.assign(new Error('invalid uuid'), { code: '22P02' });
+
     errorHandler(error, req as Request, res as Response, next);
 
     expect(statusMock).toHaveBeenCalledWith(400);
@@ -89,13 +88,13 @@ describe('Error Middleware', () => {
       error: {
         code: 'BAD_REQUEST',
         message: 'Invalid identifier format',
-      }
+      },
     });
   });
 
   it('maps unknown errors to 500 without leaking details', () => {
     const error = new Error('Secret database password is password123');
-    
+
     errorHandler(error, req as Request, res as Response, next);
 
     expect(statusMock).toHaveBeenCalledWith(500);
@@ -104,7 +103,7 @@ describe('Error Middleware', () => {
       error: {
         code: 'INTERNAL_SERVER_ERROR',
         message: 'An unexpected error occurred',
-      }
+      },
     });
   });
 });

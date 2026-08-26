@@ -73,6 +73,7 @@ export default tseslint.config(
       'prettier.config.mjs',
       'lint-staged.config.mjs',
       '**/coverage/**',
+      'apps/api/measure-payload.js',
     ],
   },
 );

@@ -9,13 +9,21 @@ describe('Authentication Middleware', () => {
   let req: Partial<Request>;
   let res: Partial<Response>;
   let next: NextFunction;
-  let getSessionSpy: any;
+  let getSessionSpy: {
+    mockRestore: () => void;
+    mockResolvedValue: (v: unknown) => void;
+    mockRejectedValue: (e: Error) => void;
+  };
 
   beforeEach(() => {
     req = { headers: {} };
     res = {};
     next = vi.fn();
-    getSessionSpy = vi.spyOn(auth.api, 'getSession');
+    getSessionSpy = vi.spyOn(auth.api, 'getSession') as unknown as {
+      mockRestore: () => void;
+      mockResolvedValue: (v: unknown) => void;
+      mockRejectedValue: (e: Error) => void;
+    };
   });
 
   afterEach(() => {
@@ -28,9 +36,9 @@ describe('Authentication Middleware', () => {
       expect.objectContaining({
         statusCode: 401,
         message: 'Unauthorized',
-      })
+      }),
     );
-    expect((req as any).auth).toBeUndefined(); // Important security invariant
+    expect((req as Request).auth).toBeUndefined(); // Important security invariant
   };
 
   it('throws 401 if session is missing completely', async () => {
@@ -120,8 +128,10 @@ describe('Authentication Middleware', () => {
 
     expect(auth.api.getSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        headers: expect.anything(),
-      })
+        headers: {
+          asymmetricMatch: (value: unknown): boolean => value instanceof Headers,
+        },
+      }),
     );
     expect(next).toHaveBeenCalledWith();
   });

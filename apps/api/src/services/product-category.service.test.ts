@@ -27,10 +27,10 @@ describe('ProductService - Categories Assignment', () => {
   describe('updateProductCategories', () => {
     it('assigns categories to product successfully', async () => {
       await productService.updateProductCategories(product.id, [cat1.id, cat2.id]);
-      
+
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.categories).toHaveLength(2);
-      
+
       const slugs = fetched.categories.map((c: { slug: string }) => c.slug);
       expect(slugs).toContain('cat-1');
       expect(slugs).toContain('cat-2');
@@ -38,16 +38,16 @@ describe('ProductService - Categories Assignment', () => {
 
     it('assigns primary category successfully if in assigned list', async () => {
       await productService.updateProductCategories(product.id, [cat1.id, cat2.id], cat1.id);
-      
+
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.categoryPrimaryId).toBe(cat1.id);
     });
 
     it('throws ConflictError if primary category is not in assigned list', async () => {
       await expect(
-        productService.updateProductCategories(product.id, [cat1.id, cat2.id], cat3.id)
+        productService.updateProductCategories(product.id, [cat1.id, cat2.id], cat3.id),
       ).rejects.toThrow(ConflictError);
-      
+
       // Ensure transaction rolled back
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.categories).toHaveLength(0); // Should be rolled back to 0
@@ -56,16 +56,16 @@ describe('ProductService - Categories Assignment', () => {
     it('completely replaces old categories on update', async () => {
       await productService.updateProductCategories(product.id, [cat1.id, cat2.id]);
       await productService.updateProductCategories(product.id, [cat3.id]);
-      
+
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.categories).toHaveLength(1);
-      expect(fetched.categories?.[0]?.slug).toBe('cat-3');
+      expect(fetched.categories[0]?.slug).toBe('cat-3');
     });
 
     it('empty categoryIds clears assignments', async () => {
       await productService.updateProductCategories(product.id, [cat1.id, cat2.id]);
       await productService.updateProductCategories(product.id, []);
-      
+
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.categories).toHaveLength(0);
       expect(fetched.categoryPrimaryId).toBeNull();
@@ -73,7 +73,9 @@ describe('ProductService - Categories Assignment', () => {
 
     it('throws constraint error for invalid category id (not found)', async () => {
       await expect(
-        productService.updateProductCategories(product.id, ['00000000-0000-0000-0000-000000000000'])
+        productService.updateProductCategories(product.id, [
+          '00000000-0000-0000-0000-000000000000',
+        ]),
       ).rejects.toThrow();
     });
 
@@ -83,7 +85,7 @@ describe('ProductService - Categories Assignment', () => {
       await categoryService.deleteCategory(deletedCat.id);
 
       await expect(
-        productService.updateProductCategories(product.id, [deletedCat.id])
+        productService.updateProductCategories(product.id, [deletedCat.id]),
       ).rejects.toThrow();
     });
 
@@ -92,7 +94,7 @@ describe('ProductService - Categories Assignment', () => {
       await productService.deleteProduct(deletedProduct.id);
 
       await expect(
-        productService.updateProductCategories(deletedProduct.id, [cat1.id])
+        productService.updateProductCategories(deletedProduct.id, [cat1.id]),
       ).rejects.toThrow();
     });
   });

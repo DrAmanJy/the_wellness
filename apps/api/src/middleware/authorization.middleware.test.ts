@@ -1,29 +1,30 @@
 import { Request, Response, NextFunction } from 'express';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
 
 import { db } from '@wellness/db';
 import { AppError } from '@wellness/utils';
 
+import type { AuthContext } from './auth.middleware';
 import { resolveRoles, requireRole } from './authorization.middleware';
 
 describe('Authorization Middleware', () => {
-  let req: Partial<Request>;
+  let req: Partial<Request & { auth?: AuthContext }>;
   let res: Partial<Response>;
   let next: NextFunction;
-  let selectSpy: any;
+  let selectSpy: MockInstance;
 
   beforeEach(() => {
     req = { auth: { userId: 'user-123', sessionId: 'sess-123', roles: [] } };
     res = {};
     next = vi.fn();
-    
+
     // Create a chainable mock for db.select().from().innerJoin().where()
     const mockQueryBuilder = {
       from: vi.fn().mockReturnThis(),
       innerJoin: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue([{ name: 'customer' }])
+      where: vi.fn().mockResolvedValue([{ name: 'customer' }]),
     };
-    selectSpy = vi.spyOn(db, 'select').mockReturnValue(mockQueryBuilder as any);
+    selectSpy = vi.spyOn(db, 'select').mockReturnValue(mockQueryBuilder as never);
   });
 
   afterEach(() => {
@@ -45,8 +46,8 @@ describe('Authorization Middleware', () => {
     });
 
     it('throws 401 if auth userId is missing in context', async () => {
-      // @ts-expect-error - Simulating missing userId for testing
-      delete req.auth?.userId;
+      // Simulate missing userId for testing
+      delete (req.auth as unknown as { userId?: string }).userId;
       resolveRoles(req as Request, res as Response, next);
       await new Promise((r) => setTimeout(r, 0));
 
@@ -63,9 +64,9 @@ describe('Authorization Middleware', () => {
       const mockQueryBuilder = {
         from: vi.fn().mockReturnThis(),
         innerJoin: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([{ name: 'customer' }, { name: 'editor' }])
+        where: vi.fn().mockResolvedValue([{ name: 'customer' }, { name: 'editor' }]),
       };
-      selectSpy.mockReturnValue(mockQueryBuilder as any);
+      selectSpy.mockReturnValue(mockQueryBuilder);
 
       resolveRoles(req as Request, res as Response, next);
       await new Promise((r) => setTimeout(r, 0));
@@ -78,9 +79,9 @@ describe('Authorization Middleware', () => {
       const mockQueryBuilder = {
         from: vi.fn().mockReturnThis(),
         innerJoin: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([])
+        where: vi.fn().mockResolvedValue([]),
       };
-      selectSpy.mockReturnValue(mockQueryBuilder as any);
+      selectSpy.mockReturnValue(mockQueryBuilder);
 
       resolveRoles(req as Request, res as Response, next);
       await new Promise((r) => setTimeout(r, 0));
@@ -94,9 +95,9 @@ describe('Authorization Middleware', () => {
       const mockQueryBuilder = {
         from: vi.fn().mockReturnThis(),
         innerJoin: vi.fn().mockReturnThis(),
-        where: vi.fn().mockRejectedValue(dbError)
+        where: vi.fn().mockRejectedValue(dbError),
       };
-      selectSpy.mockReturnValue(mockQueryBuilder as any);
+      selectSpy.mockReturnValue(mockQueryBuilder);
 
       resolveRoles(req as Request, res as Response, next);
       await new Promise((r) => setTimeout(r, 0));
@@ -108,15 +109,15 @@ describe('Authorization Middleware', () => {
 
   describe('requireRole', () => {
     it('allows access if user has exact required role', () => {
-      req.auth!.roles = ['customer', 'admin'];
+      req.auth = { userId: '1', sessionId: '1', roles: ['customer', 'admin'] };
       const middleware = requireRole('admin');
 
       middleware(req as Request, res as Response, next);
       expect(next).toHaveBeenCalledWith();
     });
-    
+
     it('allows access if user has one of the allowed roles (employee)', () => {
-      req.auth!.roles = ['employee'];
+      req.auth = { userId: '1', sessionId: '1', roles: ['employee'] };
       const middleware = requireRole('employee', 'admin');
 
       middleware(req as Request, res as Response, next);
@@ -124,7 +125,7 @@ describe('Authorization Middleware', () => {
     });
 
     it('allows access if user has one of the allowed roles (admin)', () => {
-      req.auth!.roles = ['admin'];
+      req.auth = { userId: '1', sessionId: '1', roles: ['admin'] };
       const middleware = requireRole('employee', 'admin');
 
       middleware(req as Request, res as Response, next);
@@ -132,41 +133,41 @@ describe('Authorization Middleware', () => {
     });
 
     it('throws 403 Forbidden if user is customer but requires admin', () => {
-      req.auth!.roles = ['customer'];
+      req.auth = { userId: '1', sessionId: '1', roles: ['customer'] };
       const middleware = requireRole('admin');
 
       try {
         middleware(req as Request, res as Response, next);
         expect.fail('Should have thrown');
-      } catch (error: any) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AppError);
-        expect(error.statusCode).toBe(403);
+        expect((error as AppError).statusCode).toBe(403);
       }
     });
 
     it('throws 403 Forbidden if user has no roles', () => {
-      req.auth!.roles = [];
+      req.auth = { userId: '1', sessionId: '1', roles: [] };
       const middleware = requireRole('admin');
 
       try {
         middleware(req as Request, res as Response, next);
         expect.fail('Should have thrown');
-      } catch (error: any) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AppError);
-        expect(error.statusCode).toBe(403);
+        expect((error as AppError).statusCode).toBe(403);
       }
     });
 
     it('throws 403 Forbidden for role with whitespace (e.g. "admin ")', () => {
-      req.auth!.roles = ['admin '];
+      req.auth = { userId: '1', sessionId: '1', roles: ['admin '] };
       const middleware = requireRole('admin');
 
       try {
         middleware(req as Request, res as Response, next);
         expect.fail('Should have thrown');
-      } catch (error: any) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AppError);
-        expect(error.statusCode).toBe(403);
+        expect((error as AppError).statusCode).toBe(403);
       }
     });
 
@@ -177,22 +178,22 @@ describe('Authorization Middleware', () => {
       try {
         middleware(req as Request, res as Response, next);
         expect.fail('Should have thrown');
-      } catch (error: any) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AppError);
-        expect(error.statusCode).toBe(401);
+        expect((error as AppError).statusCode).toBe(401);
       }
     });
 
     it('throws 401 Unauthorized if roles array is undefined on auth context', () => {
-      delete (req.auth as any).roles;
+      delete (req.auth as unknown as { roles?: readonly string[] }).roles;
       const middleware = requireRole('admin');
 
       try {
         middleware(req as Request, res as Response, next);
         expect.fail('Should have thrown');
-      } catch (error: any) {
+      } catch (error: unknown) {
         expect(error).toBeInstanceOf(AppError);
-        expect(error.statusCode).toBe(401);
+        expect((error as AppError).statusCode).toBe(401);
       }
     });
   });

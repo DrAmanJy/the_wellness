@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 
 import { CreateCategorySchema, UpdateCategorySchema } from '@wellness/validation';
 
+import type { AuthContext } from '../middleware/auth.middleware';
 import { categoryService } from '../services/category.service';
 
 export class CategoryController {
@@ -24,7 +25,7 @@ export class CategoryController {
     }
   }
 
-  async createCategory(req: Request, res: Response, next: NextFunction) {
+  async createCategory(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const data = CreateCategorySchema.parse(req.body);
       const userId = req.auth?.userId || 'system';
@@ -35,11 +36,15 @@ export class CategoryController {
     }
   }
 
-  async updateCategory(req: Request, res: Response, next: NextFunction) {
+  async updateCategory(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const data = UpdateCategorySchema.parse(req.body);
       const userId = req.auth?.userId || 'system';
-      const category = await categoryService.updateCategory(req.params.id as string, data as unknown as Parameters<typeof categoryService.updateCategory>[1], userId);
+      const category = await categoryService.updateCategory(
+        req.params.id as string,
+        data as unknown as Parameters<typeof categoryService.updateCategory>[1],
+        userId,
+      );
       res.json({ success: true, data: category });
     } catch (error) {
       next(error);

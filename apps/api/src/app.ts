@@ -13,7 +13,9 @@ import { requestId } from './lib/request-id';
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/not-found.middleware';
 import { globalRateLimiter } from './middleware/rate-limit.middleware';
+import categoryRoutes from './routes/category.routes';
 import healthRoutes from './routes/health.routes';
+import productRoutes from './routes/product.routes';
 
 export const app = express();
 
@@ -35,17 +37,16 @@ app.use(requestId);
 app.use(
   pinoHttp({
     logger,
-    customProps: (req, res) => ({
+    customProps: (req) => ({
       requestId: req.id,
     }),
   }),
 );
 
-import categoryRoutes from './routes/category.routes';
-import productRoutes from './routes/product.routes';
-
 // Routes
-app.use('/api/auth', toNodeHandler(auth.handler));
+app.use('/api/auth', (req, res, next) => {
+  toNodeHandler(auth.handler)(req, res).catch(next);
+});
 app.use('/health', healthRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);

@@ -9,42 +9,50 @@ async function runBenchmark(name: string, url: string, connections: number) {
   console.log(`\n========================================`);
   console.log(`Running benchmark: ${name}`);
   console.log(`URL: ${url}`);
-  console.log(`Connections: ${connections}, Duration: ${DURATION}s`);
+  console.log(`Connections: ${String(connections)}, Duration: ${String(DURATION)}s`);
   console.log(`========================================`);
-  
+
   return new Promise((resolve, reject) => {
-    autocannon({
-      url,
-      connections: connections,
-      duration: DURATION,
-    }, (err, result) => {
-      if (err) {
-        console.error(err);
-        reject(err); return;
-      }
-      
-      console.log(`Requests/sec: ${result.requests.average}`);
-      console.log(`Latency p50: ${result.latency.p50} ms`);
-      console.log(`Latency p99: ${result.latency.p99} ms`);
-      console.log(`Total Requests: ${result.requests.total}`);
-      console.log(`Errors: ${result.errors}`);
-      console.log(`Timeouts: ${result.timeouts}`);
-      
-      resolve(result);
-    });
+    autocannon(
+      {
+        url,
+        connections: connections,
+        duration: DURATION,
+      },
+      (err, result) => {
+        if (err) {
+          console.error(err);
+          reject(new Error(String(err)));
+          return;
+        }
+
+        console.log(`Requests/sec: ${String(result.requests.average)}`);
+        console.log(`Latency p50: ${String(result.latency.p50)} ms`);
+        console.log(`Latency p99: ${String(result.latency.p99)} ms`);
+        console.log(`Total Requests: ${String(result.requests.total)}`);
+        console.log(`Errors: ${String(result.errors)}`);
+        console.log(`Timeouts: ${String(result.timeouts)}`);
+
+        resolve(result);
+      },
+    );
   });
 }
 
 async function main() {
   console.log('Starting API Benchmarks Grid...');
-  
+
   try {
     for (const limit of LIMITS) {
       for (const connections of CONCURRENCY_LEVELS) {
-        await runBenchmark(`Public Products (Limit ${limit})`, `${URL}/api/products?limit=${limit}`, connections);
+        await runBenchmark(
+          `Public Products (Limit ${String(limit)})`,
+          `${URL}/api/products?limit=${String(limit)}`,
+          connections,
+        );
       }
     }
-    
+
     console.log('\nAll benchmarks finished.');
     process.exit(0);
   } catch (err) {
@@ -53,4 +61,4 @@ async function main() {
   }
 }
 
-main();
+void main();

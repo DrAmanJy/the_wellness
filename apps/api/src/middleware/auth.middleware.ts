@@ -1,3 +1,4 @@
+import { fromNodeHeaders } from 'better-auth/node';
 import { Request, Response, NextFunction } from 'express';
 
 import { auth } from '@wellness/auth';
@@ -10,15 +11,11 @@ export interface AuthContext {
   roles: readonly string[];
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      auth?: AuthContext;
-    }
+declare module 'express' {
+  interface Request {
+    auth?: AuthContext;
   }
 }
-
-import { fromNodeHeaders } from 'better-auth/node';
 
 export const requireAuth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   let session;
@@ -26,11 +23,11 @@ export const requireAuth = asyncHandler(async (req: Request, res: Response, next
     session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
-  } catch (e) {
-    throw new UnauthorizedError();
-  }
 
-  if (!session || !session.user || !session.session || !session.user.id || !session.session.id) {
+    if (!session || !session.user.id || !session.session.id) {
+      throw new UnauthorizedError();
+    }
+  } catch {
     throw new UnauthorizedError();
   }
 
