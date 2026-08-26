@@ -1,6 +1,7 @@
-
-import { db, categories, productCategories, eq, isNull, and, asc } from '@wellness/db';
+import { db, categories, productCategories, eq, isNull, and, asc, sql } from '@wellness/db';
 import { NotFoundError, ConflictError } from '@wellness/utils';
+
+const MAX_CATEGORY_DEPTH = 50;
 
 export class CategoryService {
   async getPublicCategories() {
@@ -23,9 +24,21 @@ export class CategoryService {
 
   async getCategoryBySlug(slug: string) {
     const [category] = await db
-      .select()
+      .select({
+        id: categories.id,
+        name: categories.name,
+        slug: categories.slug,
+        description: categories.description,
+        imageUrl: categories.imageUrl,
+        parentId: categories.parentId,
+        isActive: categories.isActive,
+        sortOrder: categories.sortOrder,
+        metadata: categories.metadata,
+      })
       .from(categories)
-      .where(and(eq(categories.slug, slug), eq(categories.isActive, true), isNull(categories.deletedAt)))
+      .where(
+        and(eq(categories.slug, slug), eq(categories.isActive, true), isNull(categories.deletedAt)),
+      )
       .limit(1);
 
     if (!category) {
@@ -105,7 +118,7 @@ export class CategoryService {
       .select({ id: categories.id, deletedAt: categories.deletedAt })
       .from(categories)
       .where(eq(categories.id, parentId));
-      
+
     if (!initialParent) {
       throw new ConflictError('Parent category does not exist');
     }
@@ -113,18 +126,35 @@ export class CategoryService {
       throw new ConflictError('Parent category is deleted');
     }
 
-    // Cycle detection logic
-    let currentParent = parentId;
-    while (currentParent) {
-      if (currentId && currentParent === currentId) {
-        throw new ConflictError('Category hierarchy cycle detected');
+    // Cycle detection via bounded recursive CTE — single query instead of per-ancestor loop
+    if (currentId) {
+      const ancestors = await db.execute<{ ancestor_id: string; depth: number }>(sql`
+        WITH RECURSIVE ancestors AS (
+          SELECT ${categories.parentId} AS ancestor_id, 1 AS depth
+          FROM ${categories}
+          WHERE ${categories.id} = ${parentId}
+            AND ${categories.parentId} IS NOT NULL
+          UNION ALL
+          SELECT c.parent_id AS ancestor_id, a.depth + 1 AS depth
+          FROM ancestors a
+          INNER JOIN ${categories} c ON c.id = a.ancestor_id
+          WHERE c.parent_id IS NOT NULL
+            AND a.depth < ${MAX_CATEGORY_DEPTH}
+        )
+        SELECT ancestor_id, depth FROM ancestors
+      `);
+
+      for (const row of ancestors.rows) {
+        if (row.ancestor_id === currentId) {
+          throw new ConflictError('Category hierarchy cycle detected');
+        }
       }
-      const [parent] = await db
-        .select({ parentId: categories.parentId })
-        .from(categories)
-        .where(eq(categories.id, currentParent));
-      if (!parent || !parent.parentId) break;
-      currentParent = parent.parentId;
+
+      // Check if we hit the depth limit (indicates potential existing cycle or excessive depth)
+      const maxDepth = ancestors.rows.reduce((max, r) => Math.max(max, r.depth), 0);
+      if (maxDepth >= MAX_CATEGORY_DEPTH) {
+        throw new ConflictError('Category hierarchy exceeds maximum depth');
+      }
     }
   }
 }

@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 
+import { UnauthorizedError } from '@wellness/utils';
 import {
   CreateProductSchema,
   UpdateProductSchema,
   UpdateProductCategoriesSchema,
   CursorSchema,
+  LimitSchema,
 } from '@wellness/validation';
 
 import type { AuthContext } from '../middleware/auth.middleware';
@@ -13,29 +15,38 @@ import { productService } from '../services/product.service';
 export class ProductController {
   async getPublicProducts(req: Request, res: Response, next: NextFunction) {
     try {
-      const limitStr = req.query.limit as string;
-      const limit = limitStr ? parseInt(limitStr, 10) : 20;
-      if (isNaN(limit) || limit < 1 || limit > 100) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            error: { code: 'BAD_REQUEST', message: 'Limit must be between 1 and 100' },
-          });
+      // Reject array query values — only accept scalar
+      const rawLimit = req.query.limit;
+      if (Array.isArray(rawLimit)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'Limit must be between 1 and 100' },
+        });
       }
+
+      const limitResult =
+        rawLimit != null ? LimitSchema.safeParse(rawLimit) : { success: true as const, data: 20 };
+      if (!limitResult.success) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'BAD_REQUEST', message: 'Limit must be between 1 and 100' },
+        });
+      }
+      const limit = limitResult.data;
+
       let cursorObj: { createdAt: Date; id: string } | undefined;
       if (req.query.cursor) {
-        try {
-          cursorObj = CursorSchema.parse(req.query.cursor);
-        } catch (error: unknown) {
+        const cursorResult = CursorSchema.safeParse(req.query.cursor);
+        if (!cursorResult.success) {
           return res.status(400).json({
             success: false,
             error: {
               code: 'BAD_REQUEST',
-              message: error instanceof Error ? error.message : 'Invalid cursor format',
+              message: 'Invalid cursor format',
             },
           });
         }
+        cursorObj = cursorResult.data;
       }
       const data = await productService.getPublicProducts(limit, cursorObj);
       res.json({ success: true, data });
@@ -57,10 +68,11 @@ export class ProductController {
   async createProduct(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const validatedData = CreateProductSchema.parse(req.body);
-      const userId = req.auth?.userId || 'system';
+      if (!req.auth?.userId) throw new UnauthorizedError();
+      const { categoryIds, ...productData } = validatedData;
       const data = await productService.createProduct(
-        validatedData as unknown as Parameters<typeof productService.createProduct>[0],
-        userId,
+        { ...productData, ...(categoryIds !== undefined ? { categoryIds } : {}) },
+        req.auth.userId,
       );
       res.status(201).json({ success: true, data });
     } catch (error) {
@@ -72,11 +84,23 @@ export class ProductController {
     try {
       // NOTE: Using partial validation for updates
       const validatedData = UpdateProductSchema.parse(req.body);
-      const userId = req.auth?.userId || 'system';
+      if (!req.auth?.userId) throw new UnauthorizedError();
+      const { categoryIds, ...productData } = validatedData;
+
+      const updatePayload: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(productData)) {
+        if (value !== undefined) {
+          updatePayload[key] = value;
+        }
+      }
+      if (categoryIds !== undefined) {
+        updatePayload.categoryIds = categoryIds;
+      }
+
       const data = await productService.updateProduct(
         req.params.id as string,
-        validatedData as unknown as Parameters<typeof productService.updateProduct>[1],
-        userId,
+        updatePayload,
+        req.auth.userId,
       );
       res.json({ success: true, data });
     } catch (error) {
@@ -93,13 +117,15 @@ export class ProductController {
     }
   }
 
-  async updateCategories(req: Request, res: Response, next: NextFunction) {
+  async updateCategories(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const validatedData = UpdateProductCategoriesSchema.parse(req.body);
+      if (!req.auth?.userId) throw new UnauthorizedError();
       await productService.updateProductCategories(
         req.params.id as string,
         validatedData.categoryIds,
         validatedData.primaryCategoryId || undefined,
+        req.auth.userId,
       );
       res.json({ success: true });
     } catch (error) {

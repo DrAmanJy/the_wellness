@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 
+import { UnauthorizedError } from '@wellness/utils';
 import { CreateCategorySchema, UpdateCategorySchema } from '@wellness/validation';
 
 import type { AuthContext } from '../middleware/auth.middleware';
@@ -28,8 +29,8 @@ export class CategoryController {
   async createCategory(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const data = CreateCategorySchema.parse(req.body);
-      const userId = req.auth?.userId || 'system';
-      const category = await categoryService.createCategory(data, userId);
+      if (!req.auth?.userId) throw new UnauthorizedError();
+      const category = await categoryService.createCategory(data, req.auth.userId);
       res.status(201).json({ success: true, data: category });
     } catch (error) {
       next(error);
@@ -38,12 +39,19 @@ export class CategoryController {
 
   async updateCategory(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
-      const data = UpdateCategorySchema.parse(req.body);
-      const userId = req.auth?.userId || 'system';
+      const parsed = UpdateCategorySchema.parse(req.body);
+      if (!req.auth?.userId) throw new UnauthorizedError();
+      // Strip undefined-valued keys so exactOptionalPropertyTypes is satisfied
+      const data: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (value !== undefined) {
+          data[key] = value;
+        }
+      }
       const category = await categoryService.updateCategory(
         req.params.id as string,
-        data as unknown as Parameters<typeof categoryService.updateCategory>[1],
-        userId,
+        data,
+        req.auth.userId,
       );
       res.json({ success: true, data: category });
     } catch (error) {
