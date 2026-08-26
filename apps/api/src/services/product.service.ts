@@ -1,3 +1,4 @@
+
 import {
   db,
   products,
@@ -8,6 +9,7 @@ import {
   eq,
   isNull,
   and,
+  or,
   asc,
   sql,
   inArray,
@@ -15,10 +17,22 @@ import {
 import { NotFoundError, ConflictError } from '@wellness/utils';
 
 export class ProductService {
-  async getPublicProducts(limit = 20, cursor?: Date) {
+  async getPublicProducts(limit = 20, cursor?: { createdAt: Date; id: string }) {
     let whereClause = and(eq(products.status, 'active'), isNull(products.deletedAt));
     if (cursor) {
-      whereClause = and(whereClause, sql`${products.createdAt} < ${cursor}`);
+      if (isNaN(cursor.createdAt.getTime())) {
+        throw new Error('Invalid cursor date');
+      }
+      whereClause = and(
+        whereClause,
+        or(
+          sql`${products.createdAt} < ${cursor.createdAt}`,
+          and(
+            eq(products.createdAt, cursor.createdAt),
+            sql`${products.id} < ${cursor.id}`
+          )
+        )
+      );
     }
 
     const items = await db
@@ -33,12 +47,65 @@ export class ProductService {
       })
       .from(products)
       .where(whereClause)
-      .orderBy(sql`${products.createdAt} DESC`)
+      .orderBy(sql`${products.createdAt} DESC`, sql`${products.id} DESC`)
       .limit(limit);
 
-    const nextCursor = items.length === limit ? (items[items.length - 1]?.createdAt ?? null) : null;
+    let nextCursor: string | null = null;
+    if (items.length === limit) {
+      const lastItem = items[items.length - 1];
+      if (!lastItem) throw new Error('Unreachable');
+      nextCursor = Buffer.from(
+        JSON.stringify({ createdAt: lastItem.createdAt, id: lastItem.id })
+      ).toString('base64');
+    }
 
-    return { items, nextCursor, hasMore: !!nextCursor };
+    if (items.length === 0) {
+      return { items: [], nextCursor, hasMore: false };
+    }
+
+    const productIds = items.map((i) => i.id);
+
+    const images = await db
+      .select({ productId: productImages.productId, url: productImages.url })
+      .from(productImages)
+      .where(and(inArray(productImages.productId, productIds), eq(productImages.isPrimary, true)));
+    
+    const imageMap = new Map(images.map((img) => [img.productId, img.url]));
+
+    const allVariants = await db
+      .select({
+        productId: productVariants.productId,
+        price: productVariants.price,
+        compareAtPrice: productVariants.compareAtPrice,
+      })
+      .from(productVariants)
+      .where(and(inArray(productVariants.productId, productIds), eq(productVariants.isActive, true), isNull(productVariants.deletedAt)));
+
+    const mappedItems = items.map((item) => {
+      const itemVariants = allVariants.filter((v) => v.productId === item.id);
+      let startingPrice: number | null = null;
+      let compareAtPrice: number | null = null;
+      
+      if (itemVariants.length > 0) {
+        startingPrice = Math.min(...itemVariants.map((v) => Number(v.price)));
+        const cheapestVariant = itemVariants.find((v) => Number(v.price) === startingPrice);
+        compareAtPrice = cheapestVariant?.compareAtPrice ? Number(cheapestVariant.compareAtPrice) : null;
+      }
+
+      return {
+        id: item.id,
+        name: item.name,
+        slug: item.slug,
+        shortDescription: item.shortDescription,
+        brand: item.brand,
+        primaryImage: imageMap.get(item.id) ?? null,
+        startingPrice,
+        compareAtPrice,
+        isFeatured: item.isFeatured,
+      };
+    });
+
+    return { items: mappedItems, nextCursor, hasMore: !!nextCursor };
   }
 
   async getProductBySlug(slug: string) {
@@ -56,7 +123,13 @@ export class ProductService {
     const variants = await db
       .select()
       .from(productVariants)
-      .where(and(eq(productVariants.productId, product.id), isNull(productVariants.deletedAt)));
+      .where(
+        and(
+          eq(productVariants.productId, product.id),
+          eq(productVariants.isActive, true),
+          isNull(productVariants.deletedAt)
+        )
+      );
     const images = await db
       .select()
       .from(productImages)
@@ -72,29 +145,35 @@ export class ProductService {
       })
       .from(productCategories)
       .innerJoin(categories, eq(productCategories.categoryId, categories.id))
-      .where(eq(productCategories.productId, product.id));
+      .where(and(
+        eq(productCategories.productId, product.id),
+        isNull(categories.deletedAt),
+        eq(categories.isActive, true)
+      ));
+
+    const productDto = { ...product };
+    delete (productDto as Partial<typeof productDto>).createdBy;
+    delete (productDto as Partial<typeof productDto>).updatedBy;
+    delete (productDto as Partial<typeof productDto>).deletedAt;
 
     return {
-      ...product,
+      ...productDto,
       variants,
       images,
       categories: productCategoryData,
     };
   }
 
-  async createProduct(data: any, userId: string) {
+  async createProduct(data: typeof products.$inferInsert & { categoryIds?: string[] }, userId: string) {
     return db.transaction(async (tx) => {
       // 1. Create Core Product
+      const { categoryIds, ...productData } = data;
       const [newProduct] = await tx
         .insert(products)
         .values({
-          name: data.name,
-          slug: data.slug,
-          description: data.description,
-          shortDescription: data.shortDescription,
-          brand: data.brand,
-          status: data.status || 'draft',
-          isFeatured: data.isFeatured || false,
+          ...productData,
+          status: productData.status || 'draft',
+          isFeatured: productData.isFeatured || false,
           createdBy: userId,
           updatedBy: userId,
         })
@@ -105,46 +184,62 @@ export class ProductService {
       }
 
       // 2. Link Categories if provided
-      if (data.categoryIds && data.categoryIds.length > 0) {
-        const categoryLinks = data.categoryIds.map((cId: string) => ({
+      if (categoryIds && categoryIds.length > 0) {
+        const categoryLinks = categoryIds.map((cId: string) => ({
           productId: newProduct.id,
           categoryId: cId,
         }));
         await tx.insert(productCategories).values(categoryLinks);
       }
 
-      return newProduct!;
+      return newProduct;
     });
   }
 
-  async updateProduct(id: string, data: any, userId: string) {
-    const [product] = await db
-      .update(products)
-      .set({
-        ...data,
-        updatedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(products.id, id))
-      .returning();
+  async updateProduct(id: string, data: Partial<typeof products.$inferInsert> & { categoryIds?: string[] }, userId: string) {
+    return db.transaction(async (tx) => {
+      const { categoryIds, ...productData } = data;
 
-    if (!product) {
-      throw new NotFoundError('Product not found');
-    }
-    return product!;
+      const [product] = await tx
+        .update(products)
+        .set({
+          ...productData,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(products.id, id))
+        .returning();
+
+      if (!product) {
+        throw new NotFoundError('Product not found');
+      }
+
+      if (categoryIds !== undefined) {
+        await tx.delete(productCategories).where(eq(productCategories.productId, id));
+        if (categoryIds.length > 0) {
+          const links = categoryIds.map((cId: string) => ({
+            productId: id,
+            categoryId: cId,
+          }));
+          await tx.insert(productCategories).values(links);
+        }
+      }
+
+      return product;
+    });
   }
 
   async deleteProduct(id: string) {
     const [product] = await db
       .update(products)
       .set({ deletedAt: new Date() })
-      .where(eq(products.id, id))
+      .where(and(eq(products.id, id), isNull(products.deletedAt)))
       .returning();
 
     if (!product) {
       throw new NotFoundError('Product not found');
     }
-    return product!;
+    return product;
   }
 
   // Categories Assignment
@@ -154,30 +249,70 @@ export class ProductService {
     primaryCategoryId?: string,
   ) {
     return db.transaction(async (tx) => {
-      // 1. Delete old assignments
+      // 0. Validate primary category belongs to assigned categories before modifying DB
+      if (primaryCategoryId) {
+        if (!categoryIds.includes(primaryCategoryId)) {
+          throw new ConflictError('Primary category must be one of the assigned categories');
+        }
+      }
+
+      // 1. Check if product exists and is not soft-deleted
+      const [product] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(and(eq(products.id, productId), isNull(products.deletedAt)));
+        
+      if (!product) {
+        throw new NotFoundError('Product not found');
+      }
+
+      // 1.5. Validate all categories exist, are active, and not deleted
+      if (categoryIds.length > 0) {
+        const validCategories = await tx
+          .select({ id: categories.id })
+          .from(categories)
+          .where(
+            and(
+              inArray(categories.id, categoryIds),
+              eq(categories.isActive, true),
+              isNull(categories.deletedAt)
+            )
+          );
+        
+        if (validCategories.length !== categoryIds.length) {
+          throw new ConflictError('One or more categories are invalid, inactive, or deleted');
+        }
+      }
+
+      // 2. Delete old assignments
       await tx.delete(productCategories).where(eq(productCategories.productId, productId));
 
-      // 2. Insert new ones
+      // 3. Insert new ones
       if (categoryIds.length > 0) {
         const links = categoryIds.map((cId) => ({ productId, categoryId: cId }));
         await tx.insert(productCategories).values(links);
       }
 
-      // 3. Update primary category and validate
+      // 4. Update primary category
       if (primaryCategoryId) {
-        if (!categoryIds.includes(primaryCategoryId)) {
-          throw new ConflictError('Primary category must be one of the assigned categories');
-        }
         await tx
           .update(products)
           .set({ categoryPrimaryId: primaryCategoryId })
+          .where(eq(products.id, productId));
+      } else {
+        await tx
+          .update(products)
+          .set({ categoryPrimaryId: null })
           .where(eq(products.id, productId));
       }
     });
   }
 
   // Variants CRUD
-  async addVariant(productId: string, data: any) {
+  async addVariant(productId: string, data: Omit<typeof productVariants.$inferInsert, 'productId'>) {
+    const [product] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, productId), isNull(products.deletedAt)));
+    if (!product) throw new NotFoundError('Product not found');
+
     const [variant] = await db
       .insert(productVariants)
       .values({
@@ -185,35 +320,50 @@ export class ProductService {
         productId,
       })
       .returning();
-    return variant!;
+    if (!variant) throw new Error('Failed to create variant');
+    return variant;
   }
 
-  async updateVariant(variantId: string, data: any) {
+  async updateVariant(productId: string, variantId: string, data: Partial<typeof productVariants.$inferInsert>) {
+    const [product] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, productId), isNull(products.deletedAt)));
+    if (!product) throw new NotFoundError('Product not found');
+
     const [variant] = await db
       .update(productVariants)
       .set({
         ...data,
         updatedAt: new Date(),
       })
-      .where(eq(productVariants.id, variantId))
+      .where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId), isNull(productVariants.deletedAt)))
       .returning();
 
-    if (!variant) throw new NotFoundError('Variant not found');
-    return variant!;
+    if (!variant) throw new NotFoundError('Variant not found or does not belong to product');
+    return variant;
   }
 
-  async deleteVariant(variantId: string) {
+  async deleteVariant(productId: string, variantId: string) {
+    const [product] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, productId), isNull(products.deletedAt)));
+    if (!product) throw new NotFoundError('Product not found');
+
     const [variant] = await db
       .update(productVariants)
       .set({ deletedAt: new Date() })
-      .where(eq(productVariants.id, variantId))
+      .where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId), isNull(productVariants.deletedAt)))
       .returning();
-    if (!variant) throw new NotFoundError('Variant not found');
-    return variant!;
+    if (!variant) throw new NotFoundError('Variant not found or does not belong to product');
+    return variant;
   }
 
   // Images CRUD
-  async addProductImage(productId: string, data: any) {
+  async addProductImage(productId: string, data: Omit<typeof productImages.$inferInsert, 'productId'>) {
+    const [product] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, productId), isNull(products.deletedAt)));
+    if (!product) throw new NotFoundError('Product not found');
+    
+    if (data.variantId) {
+      const [variant] = await db.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.id, data.variantId), eq(productVariants.productId, productId), isNull(productVariants.deletedAt)));
+      if (!variant) throw new ConflictError('Variant does not belong to product');
+    }
+
     return db.transaction(async (tx) => {
       // If setting as primary, unset other primaries for this product
       if (data.isPrimary) {
@@ -230,26 +380,30 @@ export class ProductService {
           productId,
         })
         .returning();
-      return image!;
+      if (!image) throw new Error('Failed to create image');
+      return image;
     });
   }
 
-  async updateProductImage(imageId: string, data: any) {
+  async updateProductImage(productId: string, imageId: string, data: Partial<typeof productImages.$inferInsert>) {
+    const [product] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, productId), isNull(products.deletedAt)));
+    if (!product) throw new NotFoundError('Product not found');
+
     return db.transaction(async (tx) => {
-      // First find the image to know its productId
+      // First find the image to verify ownership
       const [existing] = await tx
         .select()
         .from(productImages)
-        .where(eq(productImages.id, imageId));
+        .where(and(eq(productImages.id, imageId), eq(productImages.productId, productId)));
         
-      if (!existing) throw new NotFoundError('Image not found');
+      if (!existing) throw new NotFoundError('Image not found or does not belong to product');
 
       // If setting as primary, unset other primaries for this product
       if (data.isPrimary) {
         await tx
           .update(productImages)
           .set({ isPrimary: false })
-          .where(eq(productImages.productId, existing.productId));
+          .where(eq(productImages.productId, productId));
       }
 
       const [image] = await tx
@@ -257,17 +411,21 @@ export class ProductService {
         .set(data)
         .where(eq(productImages.id, imageId))
         .returning();
-      return image!;
+      if (!image) throw new Error('Failed to update image');
+      return image;
     });
   }
 
-  async deleteProductImage(imageId: string) {
+  async deleteProductImage(productId: string, imageId: string) {
+    const [product] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, productId), isNull(products.deletedAt)));
+    if (!product) throw new NotFoundError('Product not found');
+
     const [image] = await db
       .delete(productImages)
-      .where(eq(productImages.id, imageId))
+      .where(and(eq(productImages.id, imageId), eq(productImages.productId, productId)))
       .returning();
-    if (!image) throw new NotFoundError('Image not found');
-    return image!;
+    if (!image) throw new NotFoundError('Image not found or does not belong to product');
+    return image;
   }
 }
 

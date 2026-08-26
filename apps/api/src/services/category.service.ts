@@ -1,6 +1,6 @@
-import { db, categories, productCategories, eq, isNull, and, asc, sql, inArray } from '@wellness/db';
+
+import { db, categories, productCategories, eq, isNull, and, asc } from '@wellness/db';
 import { NotFoundError, ConflictError } from '@wellness/utils';
-import { CreateCategorySchema, UpdateCategorySchema } from '@wellness/validation';
 
 export class CategoryService {
   async getPublicCategories() {
@@ -25,16 +25,16 @@ export class CategoryService {
     const [category] = await db
       .select()
       .from(categories)
-      .where(and(eq(categories.slug, slug), isNull(categories.deletedAt)))
+      .where(and(eq(categories.slug, slug), eq(categories.isActive, true), isNull(categories.deletedAt)))
       .limit(1);
 
     if (!category) {
       throw new NotFoundError('Category not found');
     }
 
-    return category!;
+    return category;
   }
-  async createCategory(data: any, userId: string) {
+  async createCategory(data: typeof categories.$inferInsert, userId: string) {
     if (data.parentId) {
       await this.validateParentId(data.parentId);
     }
@@ -46,10 +46,11 @@ export class CategoryService {
         updatedBy: userId,
       })
       .returning();
-    return category!;
+    if (!category) throw new Error('Failed to create category');
+    return category;
   }
 
-  async updateCategory(id: string, data: any, userId: string) {
+  async updateCategory(id: string, data: Partial<typeof categories.$inferInsert>, userId: string) {
     if (data.parentId) {
       if (data.parentId === id) throw new ConflictError('Category cannot parent itself');
       await this.validateParentId(data.parentId, id);
@@ -61,11 +62,11 @@ export class CategoryService {
         updatedBy: userId,
         updatedAt: new Date(),
       })
-      .where(eq(categories.id, id))
+      .where(and(eq(categories.id, id), isNull(categories.deletedAt)))
       .returning();
 
     if (!category) throw new NotFoundError('Category not found');
-    return category!;
+    return category;
   }
 
   async deleteCategory(id: string) {
@@ -91,14 +92,27 @@ export class CategoryService {
       .set({
         deletedAt: new Date(),
       })
-      .where(eq(categories.id, id))
+      .where(and(eq(categories.id, id), isNull(categories.deletedAt)))
       .returning();
 
     if (!category) throw new NotFoundError('Category not found');
-    return category!;
+    return category;
   }
 
   private async validateParentId(parentId: string, currentId?: string) {
+    // Validate initial parent exists and is not deleted
+    const [initialParent] = await db
+      .select({ id: categories.id, deletedAt: categories.deletedAt })
+      .from(categories)
+      .where(eq(categories.id, parentId));
+      
+    if (!initialParent) {
+      throw new ConflictError('Parent category does not exist');
+    }
+    if (initialParent.deletedAt !== null) {
+      throw new ConflictError('Parent category is deleted');
+    }
+
     // Cycle detection logic
     let currentParent = parentId;
     while (currentParent) {
@@ -109,8 +123,8 @@ export class CategoryService {
         .select({ parentId: categories.parentId })
         .from(categories)
         .where(eq(categories.id, currentParent));
-      if (!parent) break;
-      currentParent = parent.parentId as string;
+      if (!parent || !parent.parentId) break;
+      currentParent = parent.parentId;
     }
   }
 }
