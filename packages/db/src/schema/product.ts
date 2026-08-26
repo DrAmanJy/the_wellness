@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   varchar,
@@ -13,9 +14,8 @@ import {
   index,
   numeric,
   uniqueIndex,
-  unique,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
+
 import { user } from './auth';
 import { categories } from './category';
 
@@ -47,24 +47,14 @@ export const products = pgTable(
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => {
-    return {
-      slugUnique: uniqueIndex('products_slug_unique_idx')
+    return [
+      uniqueIndex('products_slug_unique_idx')
         .on(table.slug)
         .where(sql`${table.deletedAt} IS NULL`),
-      catalogPaginationIdx: index('products_catalog_pagination_idx').on(
-        table.status,
-        table.createdAt,
-      ),
-      catalogFeaturedIdx: index('products_featured_catalog_idx').on(
-        table.status,
-        table.isFeatured,
-        table.createdAt,
-      ),
-      categoryPrimaryIdx: index('products_category_primary_idx').on(
-        table.categoryPrimaryId,
-        table.status,
-      ),
-    };
+      index('products_catalog_pagination_idx').on(table.status, table.createdAt),
+      index('products_featured_catalog_idx').on(table.status, table.isFeatured, table.createdAt),
+      index('products_category_primary_idx').on(table.categoryPrimaryId, table.status),
+    ];
   },
 );
 
@@ -80,10 +70,10 @@ export const productCategories = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => {
-    return {
-      pk: primaryKey({ columns: [table.productId, table.categoryId] }),
-      categoryIdx: index('product_categories_category_idx').on(table.categoryId),
-    };
+    return [
+      primaryKey({ columns: [table.productId, table.categoryId] }),
+      index('product_categories_category_idx').on(table.categoryId),
+    ];
   },
 );
 
@@ -111,30 +101,20 @@ export const productVariants = pgTable(
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => {
-    return {
-      productVariantsIdx: index('product_variants_idx').on(
-        table.productId,
-        table.isActive,
-        table.sortOrder,
-      ),
-      pricePositive: check('product_variants_price_positive', sql`${table.price} >= 0`),
-      compareAtPricePositive: check(
-        'product_variants_compare_at_price_positive',
-        sql`${table.compareAtPrice} >= 0`,
-      ),
-      compareAtPriceValid: check(
+    return [
+      index('product_variants_idx').on(table.productId, table.isActive, table.sortOrder),
+      check('product_variants_price_positive', sql`${table.price} >= 0`),
+      check('product_variants_compare_at_price_positive', sql`${table.compareAtPrice} >= 0`),
+      check(
         'product_variants_compare_at_price_valid',
         sql`${table.compareAtPrice} IS NULL OR ${table.compareAtPrice} >= ${table.price}`,
       ),
-      weightPositive: check('product_variants_weight_positive', sql`${table.weight} >= 0`),
-      lengthPositive: check('product_variants_length_positive', sql`${table.length} >= 0`),
-      widthPositive: check('product_variants_width_positive', sql`${table.width} >= 0`),
-      heightPositive: check('product_variants_height_positive', sql`${table.height} >= 0`),
-      sortOrderPositive: check(
-        'product_variants_sort_order_positive',
-        sql`${table.sortOrder} >= 0`,
-      ),
-    };
+      check('product_variants_weight_positive', sql`${table.weight} >= 0`),
+      check('product_variants_length_positive', sql`${table.length} >= 0`),
+      check('product_variants_width_positive', sql`${table.width} >= 0`),
+      check('product_variants_height_positive', sql`${table.height} >= 0`),
+      check('product_variants_sort_order_positive', sql`${table.sortOrder} >= 0`),
+    ];
   },
 );
 
@@ -153,13 +133,13 @@ export const productImages = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => {
-    return {
-      productImageIdx: index('product_images_product_idx').on(table.productId, table.sortOrder),
-      variantImageIdx: index('product_images_variant_idx').on(table.variantId, table.sortOrder),
-      sortOrderPositive: check('product_images_sort_order_positive', sql`${table.sortOrder} >= 0`),
-      primaryImageUnique: uniqueIndex('product_images_primary_unique_idx')
+    return [
+      index('product_images_product_idx').on(table.productId, table.sortOrder),
+      index('product_images_variant_idx').on(table.variantId, table.sortOrder),
+      check('product_images_sort_order_positive', sql`${table.sortOrder} >= 0`),
+      uniqueIndex('product_images_primary_unique_idx')
         .on(table.productId)
         .where(sql`${table.isPrimary} = true`),
-    };
+    ];
   },
 );

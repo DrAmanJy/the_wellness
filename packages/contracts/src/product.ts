@@ -1,3 +1,5 @@
+import { JsonObject } from './common';
+
 export type ProductListDTO = {
   id: string;
   name: string;
@@ -21,11 +23,11 @@ export type ProductDetailDTO = {
   isFeatured: boolean;
   categoryPrimaryId: string | null;
   tags: string[] | null;
-  attributes: any;
-  specifications: any;
-  ingredients: any;
-  benefits: any;
-  seo: any;
+  attributes: JsonObject | null;
+  specifications: JsonObject | null;
+  ingredients: JsonObject | null;
+  benefits: JsonObject | null;
+  seo: JsonObject | null;
   categories: { id: string; name: string; slug: string }[];
   variants: VariantDTO[];
   images: ProductImageDTO[];

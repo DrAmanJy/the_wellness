@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   varchar,
@@ -12,7 +13,7 @@ import {
   uniqueIndex,
   AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
+
 import { user } from './auth';
 
 export const categories = pgTable(
@@ -28,22 +29,19 @@ export const categories = pgTable(
     sortOrder: integer('sort_order').default(0).notNull(),
     metadata: jsonb('metadata').default({}).notNull(),
     createdBy: text('created_by').references(() => user.id),
+
     updatedBy: text('updated_by').references(() => user.id),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (table) => {
-    return {
-      parentNotSelf: check('categories_parent_not_self', sql`${table.parentId} != ${table.id}`),
-      slugUnique: uniqueIndex('categories_slug_unique_idx')
+    return [
+      check('categories_parent_not_self', sql`${table.parentId} != ${table.id}`),
+      uniqueIndex('categories_slug_unique_idx')
         .on(table.slug)
         .where(sql`${table.deletedAt} IS NULL`),
-      categoryTreeIdx: index('categories_tree_idx').on(
-        table.parentId,
-        table.isActive,
-        table.sortOrder,
-      ),
-    };
+      index('categories_tree_idx').on(table.parentId, table.isActive, table.sortOrder),
+    ];
   },
 );

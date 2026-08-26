@@ -1,3 +1,3 @@
 export * from './client';
 export * from './schema';
-export { eq, and, isNull, asc, sql, inArray } from 'drizzle-orm';
+export { eq, and, or, isNull, asc, sql, inArray } from 'drizzle-orm';

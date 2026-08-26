@@ -1,3 +1,5 @@
+import { JsonObject } from './common';
+
 export type CategoryDTO = {
   id: string;
   name: string;
@@ -7,5 +9,5 @@ export type CategoryDTO = {
   parentId: string | null;
   isActive: boolean;
   sortOrder: number;
-  metadata: Record<string, any>;
+  metadata: JsonObject | null;
 };
