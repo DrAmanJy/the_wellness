@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { requireAuth } from './auth.middleware';
 import { Request, Response, NextFunction } from 'express';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { auth } from '@wellness/auth';
+
+import { requireAuth } from './auth.middleware';
 
 describe('Authentication Middleware', () => {
   let req: Partial<Request>;
@@ -20,54 +22,78 @@ describe('Authentication Middleware', () => {
     getSessionSpy.mockRestore();
   });
 
-  it('throws 401 if session is missing completely', async () => {
-    getSessionSpy.mockResolvedValue(null);
-
-    requireAuth(req as Request, res as Response, next);
-    await new Promise((r) => setTimeout(r, 0));
-
+  const expectUnauthorized = () => {
+    expect(next).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledWith(
       expect.objectContaining({
         statusCode: 401,
         message: 'Unauthorized',
-      }),
+      })
     );
+    expect((req as any).auth).toBeUndefined(); // Important security invariant
+  };
+
+  it('throws 401 if session is missing completely', async () => {
+    getSessionSpy.mockResolvedValue(null);
+    requireAuth(req as Request, res as Response, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expectUnauthorized();
   });
 
   it('throws 401 if Better Auth throws an internal error', async () => {
     getSessionSpy.mockRejectedValue(new Error('Internal Auth Error'));
-
     requireAuth(req as Request, res as Response, next);
     await new Promise((r) => setTimeout(r, 0));
-
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({
-        statusCode: 401,
-        message: 'Unauthorized',
-      }),
-    );
+    expectUnauthorized();
   });
 
-  it('throws 401 if session object is malformed (missing session info)', async () => {
-    // Session returned but missing user or session ID
-    getSessionSpy.mockResolvedValue({} as any);
-
+  it('throws 401 if session object is completely empty', async () => {
+    getSessionSpy.mockResolvedValue({});
     requireAuth(req as Request, res as Response, next);
     await new Promise((r) => setTimeout(r, 0));
+    expectUnauthorized();
+  });
 
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({
-        statusCode: 401,
-        message: 'Unauthorized',
-      }),
-    );
+  it('throws 401 if session.user exists but session.session is missing', async () => {
+    getSessionSpy.mockResolvedValue({ user: { id: 'user-1' } });
+    requireAuth(req as Request, res as Response, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expectUnauthorized();
+  });
+
+  it('throws 401 if session.session exists but session.user is missing', async () => {
+    getSessionSpy.mockResolvedValue({ session: { id: 'sess-1' } });
+    requireAuth(req as Request, res as Response, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expectUnauthorized();
+  });
+
+  it('throws 401 if session.user.id is empty string', async () => {
+    getSessionSpy.mockResolvedValue({ user: { id: '' }, session: { id: 'sess-1' } });
+    requireAuth(req as Request, res as Response, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expectUnauthorized();
+  });
+
+  it('throws 401 if session.user.id is undefined', async () => {
+    getSessionSpy.mockResolvedValue({ user: { id: undefined }, session: { id: 'sess-1' } });
+    requireAuth(req as Request, res as Response, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expectUnauthorized();
+  });
+
+  it('throws 401 if session.session.id is empty string', async () => {
+    getSessionSpy.mockResolvedValue({ user: { id: 'user-1' }, session: { id: '' } });
+    requireAuth(req as Request, res as Response, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expectUnauthorized();
   });
 
   it('attaches auth context and passes when session is perfectly valid', async () => {
     getSessionSpy.mockResolvedValue({
       session: { id: 'session-123' },
       user: { id: 'user-123' },
-    } as any);
+    });
 
     requireAuth(req as Request, res as Response, next);
     await new Promise((r) => setTimeout(r, 0));
@@ -75,8 +101,9 @@ describe('Authentication Middleware', () => {
     expect(req.auth).toEqual({
       userId: 'user-123',
       sessionId: 'session-123',
-      roles: [],
+      roles: [], // Verifying roles initialized as []
     });
+    expect(next).toHaveBeenCalledTimes(1); // exactly once
     expect(next).toHaveBeenCalledWith(); // success has no args
   });
 
@@ -84,7 +111,7 @@ describe('Authentication Middleware', () => {
     getSessionSpy.mockResolvedValue({
       session: { id: 'session-123' },
       user: { id: 'user-123' },
-    } as any);
+    });
 
     req.headers = { cookie: 'test-cookie' };
 

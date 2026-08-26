@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { productService } from './product.service';
-import { factories } from '../test/factories';
+
 import { ConflictError } from '@wellness/utils';
 
+import { productService } from './product.service';
+import { factories } from '../test/factories';
+
 describe('ProductService - Categories Assignment', () => {
-  let user: any;
-  let product: any;
-  let cat1: any;
-  let cat2: any;
-  let cat3: any;
+  let user: import('../test/factories').FactoryUser;
+  let product: import('../test/factories').FactoryProduct;
+  let cat1: import('../test/factories').FactoryCategory;
+  let cat2: import('../test/factories').FactoryCategory;
+  let cat3: import('../test/factories').FactoryCategory;
 
   beforeEach(async () => {
     user = await factories.createUser();
@@ -29,7 +31,7 @@ describe('ProductService - Categories Assignment', () => {
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.categories).toHaveLength(2);
       
-      const slugs = fetched.categories.map((c: any) => c.slug);
+      const slugs = fetched.categories.map((c: { slug: string }) => c.slug);
       expect(slugs).toContain('cat-1');
       expect(slugs).toContain('cat-2');
     });
@@ -60,15 +62,38 @@ describe('ProductService - Categories Assignment', () => {
       expect(fetched.categories?.[0]?.slug).toBe('cat-3');
     });
 
-    it('throws constraint error for invalid category id', async () => {
-      let error: any;
-      try {
-        await productService.updateProductCategories(product.id, ['00000000-0000-0000-0000-000000000000']);
-      } catch (e) {
-        error = e;
-      }
-      expect(error).toBeDefined();
-      expect(String(error.cause || error)).toMatch(/violates foreign key constraint/);
+    it('empty categoryIds clears assignments', async () => {
+      await productService.updateProductCategories(product.id, [cat1.id, cat2.id]);
+      await productService.updateProductCategories(product.id, []);
+      
+      const fetched = await productService.getProductBySlug(product.slug);
+      expect(fetched.categories).toHaveLength(0);
+      expect(fetched.categoryPrimaryId).toBeNull();
+    });
+
+    it('throws constraint error for invalid category id (not found)', async () => {
+      await expect(
+        productService.updateProductCategories(product.id, ['00000000-0000-0000-0000-000000000000'])
+      ).rejects.toThrow();
+    });
+
+    it('throws error when assigning a soft-deleted or inactive category', async () => {
+      const deletedCat = await factories.createCategory({ slug: 'deleted-cat' });
+      const { categoryService } = await import('./category.service');
+      await categoryService.deleteCategory(deletedCat.id);
+
+      await expect(
+        productService.updateProductCategories(product.id, [deletedCat.id])
+      ).rejects.toThrow();
+    });
+
+    it('throws error when assigning to a deleted product', async () => {
+      const deletedProduct = await factories.createProduct();
+      await productService.deleteProduct(deletedProduct.id);
+
+      await expect(
+        productService.updateProductCategories(deletedProduct.id, [cat1.id])
+      ).rejects.toThrow();
     });
   });
 });

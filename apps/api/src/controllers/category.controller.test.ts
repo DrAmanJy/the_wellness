@@ -27,20 +27,34 @@ describe('Category API Controllers', () => {
   });
 
   describe('GET /api/categories', () => {
-    it('returns only active, public categories', async () => {
+    it('returns only active, public, non-deleted categories', async () => {
       await factories.createCategory({ name: 'Active Cat', slug: 'active-cat', isActive: true });
       await factories.createCategory({ name: 'Inactive Cat', slug: 'inactive-cat', isActive: false });
+      const deletedCat = await factories.createCategory({ name: 'Deleted Cat', slug: 'deleted-cat', isActive: true });
+      const { db, categories } = await import('@wellness/db');
+      await db.update(categories).set({ deletedAt: new Date() }).where(require('drizzle-orm').eq(categories.id, deletedCat.id));
 
       const res = await request(app).get('/api/categories');
       
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.data.length).toBe(1);
       
-      // Ensure the inactive category is completely hidden
+      // Ensure only the active category is returned
       const slugs = res.body.data.map((c: any) => c.slug);
       expect(slugs).toContain('active-cat');
       expect(slugs).not.toContain('inactive-cat');
+      expect(slugs).not.toContain('deleted-cat');
+
+      // Verify DTO structure doesn't leak internal fields
+      const dto = res.body.data[0];
+      expect(dto).not.toHaveProperty('createdBy');
+      expect(dto).not.toHaveProperty('updatedBy');
+      expect(dto).not.toHaveProperty('deletedAt');
+      expect(dto).not.toHaveProperty('createdAt');
+      expect(dto).not.toHaveProperty('updatedAt');
+      expect(dto).toHaveProperty('id');
+      expect(dto).toHaveProperty('slug');
     });
   });
 
@@ -57,6 +71,21 @@ describe('Category API Controllers', () => {
       const res = await request(app).get('/api/categories/does-not-exist');
       expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
+    });
+
+    it('returns 404 for inactive category slug', async () => {
+      await factories.createCategory({ name: 'Inactive Cat', slug: 'inactive-cat', isActive: false });
+      const res = await request(app).get('/api/categories/inactive-cat');
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 404 for soft-deleted category slug', async () => {
+      const deletedCat = await factories.createCategory({ name: 'Deleted Cat', slug: 'deleted-cat', isActive: true });
+      const { db, categories } = await import('@wellness/db');
+      await db.update(categories).set({ deletedAt: new Date() }).where(require('drizzle-orm').eq(categories.id, deletedCat.id));
+
+      const res = await request(app).get('/api/categories/deleted-cat');
+      expect(res.status).toBe(404);
     });
   });
 
@@ -111,6 +140,32 @@ describe('Category API Controllers', () => {
       
       expect(res.status).toBe(409);
     });
+
+    it('returns 409 for deleted parent on create', async () => {
+      const deletedParent = await factories.createCategory();
+      const { db, categories } = await import('@wellness/db');
+      await db.update(categories).set({ deletedAt: new Date() }).where(require('drizzle-orm').eq(categories.id, deletedParent.id));
+
+      const res = await request(app)
+        .post('/api/categories')
+        .set('Cookie', [`better-auth.session_token=${adminToken}`])
+        .send({ name: 'Child', slug: 'child', parentId: deletedParent.id });
+      
+      expect(res.status).toBe(409);
+    });
+
+    it('creates a category as employee (201)', async () => {
+      const employeeUser = await factories.createUser();
+      await factories.assignRole(employeeUser.id, 'employee');
+      const employeeSession = await factories.createSession(employeeUser.id);
+      
+      const res = await request(app)
+        .post('/api/categories')
+        .set('Cookie', [`better-auth.session_token=${employeeSession.token}`])
+        .send({ name: 'Employee Cat', slug: 'emp-cat' });
+      
+      expect(res.status).toBe(201);
+    });
   });
 
   describe('DELETE /api/categories/:id', () => {
@@ -155,6 +210,18 @@ describe('Category API Controllers', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.deletedAt).toBeDefined();
     });
+
+    it('successfully soft-deletes a category as employee', async () => {
+      const employeeUser = await factories.createUser();
+      await factories.assignRole(employeeUser.id, 'employee');
+      const employeeSession = await factories.createSession(employeeUser.id);
+      
+      const cat = await factories.createCategory();
+      const res = await request(app)
+        .delete(`/api/categories/${cat.id}`)
+        .set('Cookie', [`better-auth.session_token=${employeeSession.token}`]);
+      expect(res.status).toBe(200);
+    });
   });
 
   describe('PATCH /api/categories/:id', () => {
@@ -175,6 +242,21 @@ describe('Category API Controllers', () => {
       expect(res.body.data.name).toBe('New');
     });
 
+    it('updates a category successfully as employee', async () => {
+      const employeeUser = await factories.createUser();
+      await factories.assignRole(employeeUser.id, 'employee');
+      const employeeSession = await factories.createSession(employeeUser.id);
+
+      const cat = await factories.createCategory({ name: 'Old' });
+      const res = await request(app)
+        .patch(`/api/categories/${cat.id}`)
+        .set('Cookie', [`better-auth.session_token=${employeeSession.token}`])
+        .send({ name: 'New Emp' });
+      
+      expect(res.status).toBe(200);
+      expect(res.body.data.name).toBe('New Emp');
+    });
+
     it('returns 404 for updating non-existent category', async () => {
       const res = await request(app)
         .patch(`/api/categories/00000000-0000-0000-0000-000000000000`)
@@ -182,6 +264,44 @@ describe('Category API Controllers', () => {
         .send({ name: 'New' });
       
       expect(res.status).toBe(404);
+    });
+
+    it('returns 409 for duplicate slug on update', async () => {
+      await factories.createCategory({ slug: 'existing-slug' });
+      const cat = await factories.createCategory({ slug: 'my-slug' });
+      
+      const res = await request(app)
+        .patch(`/api/categories/${cat.id}`)
+        .set('Cookie', [`better-auth.session_token=${adminToken}`])
+        .send({ slug: 'existing-slug' });
+      
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 for self-parenting', async () => {
+      const cat = await factories.createCategory();
+      
+      const res = await request(app)
+        .patch(`/api/categories/${cat.id}`)
+        .set('Cookie', [`better-auth.session_token=${adminToken}`])
+        .send({ parentId: cat.id }); // self-parenting
+      
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 for deleted parent on update', async () => {
+      const deletedParent = await factories.createCategory();
+      const { db, categories } = await import('@wellness/db');
+      await db.update(categories).set({ deletedAt: new Date() }).where(require('drizzle-orm').eq(categories.id, deletedParent.id));
+
+      const cat = await factories.createCategory();
+      
+      const res = await request(app)
+        .patch(`/api/categories/${cat.id}`)
+        .set('Cookie', [`better-auth.session_token=${adminToken}`])
+        .send({ parentId: deletedParent.id });
+      
+      expect(res.status).toBe(409);
     });
   });
 });

@@ -70,6 +70,13 @@ describe('CategoryService', () => {
         .rejects.toThrow(NotFoundError);
     });
 
+    it('throws NotFoundError for updating soft-deleted category', async () => {
+      const cat = await factories.createCategory();
+      await categoryService.deleteCategory(cat.id, adminId);
+      await expect(categoryService.updateCategory(cat.id, { name: 'Any' }, adminId))
+        .rejects.toThrow(NotFoundError);
+    });
+
     it('rejects self-parenting', async () => {
       const cat = await factories.createCategory();
       
@@ -114,6 +121,12 @@ describe('CategoryService', () => {
         .rejects.toThrow(NotFoundError);
     });
 
+    it('throws NotFoundError when getting inactive category by slug', async () => {
+      await factories.createCategory({ name: 'Inactive', slug: 'inactive', isActive: false });
+      await expect(categoryService.getCategoryBySlug('inactive'))
+        .rejects.toThrow(NotFoundError);
+    });
+
     it('throws NotFoundError when getting soft-deleted category by slug', async () => {
       const deletedCat = await factories.createCategory({ name: 'Deleted', slug: 'deleted' });
       await categoryService.deleteCategory(deletedCat.id);
@@ -130,6 +143,15 @@ describe('CategoryService', () => {
 
       await expect(categoryService.deleteCategory(parent.id))
         .rejects.toThrow(ConflictError);
+    });
+
+    it('allows deletion if category has ONLY soft-deleted children', async () => {
+      const parent = await factories.createCategory({ name: 'Parent', slug: 'parent' });
+      const child = await factories.createCategory({ name: 'Child', slug: 'child', parentId: parent.id });
+      await categoryService.deleteCategory(child.id);
+
+      const deletedParent = await categoryService.deleteCategory(parent.id);
+      expect(deletedParent.deletedAt).toBeInstanceOf(Date);
     });
 
     it('blocks deletion if category is linked to products', async () => {
@@ -156,6 +178,34 @@ describe('CategoryService', () => {
     it('throws NotFoundError for deleting non-existent category', async () => {
       await expect(categoryService.deleteCategory('00000000-0000-0000-0000-000000000000'))
         .rejects.toThrow(NotFoundError);
+    });
+
+    it('throws NotFoundError for repeated deletion of soft-deleted category', async () => {
+      const cat = await factories.createCategory();
+      await categoryService.deleteCategory(cat.id);
+      
+      await expect(categoryService.deleteCategory(cat.id))
+        .rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('Slug constraints', () => {
+    it('allows slug reuse after soft-deletion', async () => {
+      const cat1 = await factories.createCategory({ name: 'Test', slug: 'test' });
+      await categoryService.deleteCategory(cat1.id);
+      
+      const cat2 = await categoryService.createCategory({
+        name: 'Test',
+        slug: 'test',
+        description: '',
+        imageUrl: '',
+        isActive: true,
+        sortOrder: 0,
+        metadata: {}
+      }, adminId);
+      
+      expect(cat2.id).not.toBe(cat1.id);
+      expect(cat2.slug).toBe('test');
     });
   });
 });

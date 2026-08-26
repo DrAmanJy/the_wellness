@@ -1,6 +1,11 @@
-import { db, user, role, userRole, categories, products, productCategories, productVariants, productImages, session, eq, inArray, sql } from '@wellness/db';
 import { randomUUID } from 'crypto';
 import { webcrypto } from 'node:crypto';
+
+import { db, user, role, userRole, categories, products, session, sql } from '@wellness/db';
+
+export type FactoryUser = typeof user.$inferSelect;
+export type FactoryProduct = typeof products.$inferSelect;
+export type FactoryCategory = typeof categories.$inferSelect;
 
 // Secret should match the one in packages/config (or better-auth setup)
 const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || 'secret';
@@ -24,7 +29,7 @@ export async function signSessionToken(token: string, secret: string): Promise<s
 
 // Types for factory overrides
 type UserOverride = Partial<typeof user.$inferInsert>;
-type RoleOverride = Partial<typeof role.$inferInsert>;
+
 type CategoryOverride = Partial<typeof categories.$inferInsert>;
 type ProductOverride = Partial<typeof products.$inferInsert>;
 
@@ -40,7 +45,8 @@ export const factories = {
       updatedAt: overrides?.updatedAt || new Date(),
       ...overrides,
     }).returning();
-    return newUser!;
+    if (!newUser) throw new Error('Failed to create user');
+    return newUser;
   },
 
   async createRole(name: string) {
@@ -51,12 +57,12 @@ export const factories = {
       target: role.name,
       set: { name }
     }).returning();
-    return newRole!;
+    if (!newRole) throw new Error('Failed to create role');
+    return newRole;
   },
 
   async assignRole(userId: string, roleName: string) {
     const r = await this.createRole(roleName);
-    if (!r) throw new Error('Failed to create/find role');
     await db.insert(userRole).values({
       userId,
       roleId: r.id,
@@ -74,19 +80,32 @@ export const factories = {
       isActive: overrides?.isActive ?? true,
       ...overrides,
     }).returning();
-    return newCategory!;
+    if (!newCategory) throw new Error('Failed to create category');
+    return newCategory;
   },
 
   async createProduct(overrides?: ProductOverride) {
     const id = overrides?.id || randomUUID();
+    let createdBy = overrides?.createdBy;
+    let updatedBy = overrides?.updatedBy;
+
+    if (!createdBy) {
+      const u = await this.createUser();
+      createdBy = u.id;
+      if (!updatedBy) updatedBy = u.id;
+    }
+
     const [newProduct] = await db.insert(products).values({
       id,
       name: overrides?.name || 'Test Product',
       slug: overrides?.slug || `test-product-${id}`,
       status: overrides?.status || 'active',
+      createdBy,
+      updatedBy,
       ...overrides,
     }).returning();
-    return newProduct!;
+    if (!newProduct) throw new Error('Failed to create product');
+    return newProduct;
   },
 
   async createSession(userId: string) {
@@ -110,18 +129,17 @@ export const factories = {
    * Call this in `afterEach` or `afterAll`.
    */
   async cleanup() {
-    // Truncate all tables cascaded to ensure complete cleanup regardless of FKs
     await db.execute(sql`
-      TRUNCATE TABLE 
-        product_images, 
-        product_variants, 
-        product_categories, 
-        products, 
-        categories, 
-        user_role, 
-        role, 
-        session, 
-        "user" 
+      TRUNCATE TABLE
+        product_images,
+        product_variants,
+        product_categories,
+        products,
+        categories,
+        user_role,
+        role,
+        session,
+        "user"
       CASCADE
     `);
   }

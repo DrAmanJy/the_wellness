@@ -1,7 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { resolveRoles, requireRole } from './authorization.middleware';
 import { Request, Response, NextFunction } from 'express';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { db } from '@wellness/db';
+import { AppError } from '@wellness/utils';
+
+import { resolveRoles, requireRole } from './authorization.middleware';
 
 describe('Authorization Middleware', () => {
   let req: Partial<Request>;
@@ -99,6 +102,7 @@ describe('Authorization Middleware', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       expect(next).toHaveBeenCalledWith(dbError); // passes exact error to next()
+      expect(req.auth?.roles).toEqual([]); // Roles must not be populated silently
     });
   });
 
@@ -110,33 +114,86 @@ describe('Authorization Middleware', () => {
       middleware(req as Request, res as Response, next);
       expect(next).toHaveBeenCalledWith();
     });
+    
+    it('allows access if user has one of the allowed roles (employee)', () => {
+      req.auth!.roles = ['employee'];
+      const middleware = requireRole('employee', 'admin');
 
-    it('throws 403 Forbidden if user completely lacks required role', () => {
+      middleware(req as Request, res as Response, next);
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it('allows access if user has one of the allowed roles (admin)', () => {
+      req.auth!.roles = ['admin'];
+      const middleware = requireRole('employee', 'admin');
+
+      middleware(req as Request, res as Response, next);
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it('throws 403 Forbidden if user is customer but requires admin', () => {
       req.auth!.roles = ['customer'];
       const middleware = requireRole('admin');
 
-      expect(() => middleware(req as Request, res as Response, next)).toThrow('Forbidden');
+      try {
+        middleware(req as Request, res as Response, next);
+        expect.fail('Should have thrown');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(AppError);
+        expect(error.statusCode).toBe(403);
+      }
     });
 
     it('throws 403 Forbidden if user has no roles', () => {
       req.auth!.roles = [];
       const middleware = requireRole('admin');
 
-      expect(() => middleware(req as Request, res as Response, next)).toThrow('Forbidden');
+      try {
+        middleware(req as Request, res as Response, next);
+        expect.fail('Should have thrown');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(AppError);
+        expect(error.statusCode).toBe(403);
+      }
+    });
+
+    it('throws 403 Forbidden for role with whitespace (e.g. "admin ")', () => {
+      req.auth!.roles = ['admin '];
+      const middleware = requireRole('admin');
+
+      try {
+        middleware(req as Request, res as Response, next);
+        expect.fail('Should have thrown');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(AppError);
+        expect(error.statusCode).toBe(403);
+      }
     });
 
     it('throws 401 Unauthorized if auth context is somehow completely missing before this step', () => {
       delete req.auth;
       const middleware = requireRole('admin');
 
-      expect(() => middleware(req as Request, res as Response, next)).toThrow('Unauthorized');
+      try {
+        middleware(req as Request, res as Response, next);
+        expect.fail('Should have thrown');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(AppError);
+        expect(error.statusCode).toBe(401);
+      }
     });
 
     it('throws 401 Unauthorized if roles array is undefined on auth context', () => {
       delete (req.auth as any).roles;
       const middleware = requireRole('admin');
 
-      expect(() => middleware(req as Request, res as Response, next)).toThrow('Unauthorized');
+      try {
+        middleware(req as Request, res as Response, next);
+        expect.fail('Should have thrown');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(AppError);
+        expect(error.statusCode).toBe(401);
+      }
     });
   });
 });

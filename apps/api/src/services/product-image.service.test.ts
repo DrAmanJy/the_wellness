@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { productService } from './product.service';
-import { factories } from '../test/factories';
+
 import { NotFoundError } from '@wellness/utils';
 
+import { productService } from './product.service';
+import { factories } from '../test/factories';
+
 describe('ProductService - Images', () => {
-  let user: any;
-  let product: any;
-  let variant: any;
+  let user: import('../test/factories').FactoryUser;
+  let product: import('../test/factories').FactoryProduct;
+  let variant: { id: string; sku: string; price: string };
 
   beforeEach(async () => {
     user = await factories.createUser();
@@ -49,17 +51,12 @@ describe('ProductService - Images', () => {
       expect(img.variantId).toBe(variant.id);
     });
 
-    it('throws error for invalid productId (FK constraint)', async () => {
-      let error: any;
-      try {
-        await productService.addProductImage('00000000-0000-0000-0000-000000000000', {
+    it('throws NotFoundError for invalid productId', async () => {
+      await expect(
+        productService.addProductImage('00000000-0000-0000-0000-000000000000', {
           url: 'https://example.com/img1.jpg'
-        });
-      } catch (e) {
-        error = e;
-      }
-      expect(error).toBeDefined();
-      expect(String(error.cause || error)).toMatch(/violates foreign key constraint/);
+        })
+      ).rejects.toThrow(NotFoundError);
     });
 
     it('unsets other primary images when a new one is set to primary', async () => {
@@ -76,8 +73,8 @@ describe('ProductService - Images', () => {
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.images).toHaveLength(2);
       
-      const p1 = fetched.images.find((i: any) => i.id === img1!.id);
-      const p2 = fetched.images.find((i: any) => i.id === img2!.id);
+      const p1 = fetched.images.find((i: { id: string, isPrimary: boolean }) => i.id === img1.id);
+      const p2 = fetched.images.find((i: { id: string, isPrimary: boolean }) => i.id === img2.id);
       
       expect(p1?.isPrimary).toBe(false);
       expect(p2?.isPrimary).toBe(true);
@@ -99,8 +96,8 @@ describe('ProductService - Images', () => {
       // and forcefully execute concurrent Drizzle queries against the DB constraint directly
       const { db, productImages, eq } = await import('@wellness/db');
       
-      const p1_query = db.update(productImages).set({ isPrimary: true }).where(eq(productImages.id, img1!.id));
-      const p2_query = db.update(productImages).set({ isPrimary: true }).where(eq(productImages.id, img2!.id));
+      const p1_query = db.update(productImages).set({ isPrimary: true }).where(eq(productImages.id, img1.id));
+      const p2_query = db.update(productImages).set({ isPrimary: true }).where(eq(productImages.id, img2.id));
       
       // We expect one to succeed and one to fail due to the partial unique index
       const results = await Promise.allSettled([p1_query, p2_query]);
@@ -112,7 +109,7 @@ describe('ProductService - Images', () => {
       expect(rejected.length).toBe(1);
       
       if (rejected[0]?.status === 'rejected') {
-        const err: any = rejected[0].reason;
+        const err: { code?: string, cause?: any, name?: string, message?: string } = rejected[0].reason;
         const isConstraint = err.code === '23505' || 
           (err.cause && err.cause.code === '23505') || 
           (err.name === 'PostgresError' && err.code === '23505') ||
@@ -135,11 +132,11 @@ describe('ProductService - Images', () => {
       });
       
       // Update img2 to be primary
-      await productService.updateProductImage(img2.id, { isPrimary: true });
+      await productService.updateProductImage(product.id, img2.id, { isPrimary: true });
       
       const fetched = await productService.getProductBySlug(product.slug);
-      const p1 = fetched.images.find((i: any) => i.id === img1!.id);
-      const p2 = fetched.images.find((i: any) => i.id === img2!.id);
+      const p1 = fetched.images.find((i: { id: string, isPrimary: boolean }) => i.id === img1.id);
+      const p2 = fetched.images.find((i: { id: string, isPrimary: boolean }) => i.id === img2.id);
       
       expect(p1?.isPrimary).toBe(false); // Should have been unset
       expect(p2?.isPrimary).toBe(true);
@@ -147,7 +144,18 @@ describe('ProductService - Images', () => {
 
     it('throws NotFoundError for invalid image ID', async () => {
       await expect(
-        productService.updateProductImage('00000000-0000-0000-0000-000000000000', { isPrimary: true })
+        productService.updateProductImage(product.id, '00000000-0000-0000-0000-000000000000', { isPrimary: true })
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('throws NotFoundError if image belongs to a different product (IDOR)', async () => {
+      const otherProduct = await factories.createProduct();
+      const img = await productService.addProductImage(otherProduct.id, {
+        url: 'https://example.com/other.jpg'
+      });
+
+      await expect(
+        productService.updateProductImage(product.id, img.id, { isPrimary: true })
       ).rejects.toThrow(NotFoundError);
     });
   });
@@ -158,7 +166,7 @@ describe('ProductService - Images', () => {
         url: 'https://example.com/delete-me.jpg'
       });
       
-      await productService.deleteProductImage(img.id);
+      await productService.deleteProductImage(product.id, img.id);
       
       const fetched = await productService.getProductBySlug(product.slug);
       expect(fetched.images).toHaveLength(0);
@@ -166,7 +174,18 @@ describe('ProductService - Images', () => {
 
     it('throws NotFoundError for non-existent image', async () => {
       await expect(
-        productService.deleteProductImage('00000000-0000-0000-0000-000000000000')
+        productService.deleteProductImage(product.id, '00000000-0000-0000-0000-000000000000')
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('throws NotFoundError if image belongs to a different product (IDOR) on delete', async () => {
+      const otherProduct = await factories.createProduct();
+      const img = await productService.addProductImage(otherProduct.id, {
+        url: 'https://example.com/other-delete.jpg'
+      });
+
+      await expect(
+        productService.deleteProductImage(product.id, img.id)
       ).rejects.toThrow(NotFoundError);
     });
   });
