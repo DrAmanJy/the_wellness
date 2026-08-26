@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit",
     "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
-    "test": "vitest run --fileParallelism=false",
+    "test": "vitest run --no-file-parallelism",
     "benchmark:seed": "tsx src/performance/seed.ts",
     "benchmark:server": "tsx src/server.ts",
     "benchmark": "tsx src/performance/api-benchmark.ts",
