@@ -211,7 +211,8 @@ export class ProductService {
 
       // 2. Link Categories if provided
       if (categoryIds && categoryIds.length > 0) {
-        const categoryLinks = categoryIds.map((cId: string) => ({
+        const uniqueIds = [...new Set(categoryIds)];
+        const categoryLinks = uniqueIds.map((cId: string) => ({
           productId: newProduct.id,
           categoryId: cId,
         }));
@@ -238,7 +239,7 @@ export class ProductService {
             updatedBy: userId,
             updatedAt: new Date(),
           })
-          .where(eq(products.id, id))
+          .where(and(eq(products.id, id), isNull(products.deletedAt)))
           .returning();
 
         if (!product) {
@@ -322,7 +323,8 @@ export class ProductService {
 
       // 3. Insert new ones
       if (categoryIds.length > 0) {
-        const links = categoryIds.map((cId) => ({ productId, categoryId: cId }));
+        const uniqueIds = [...new Set(categoryIds)];
+        const links = uniqueIds.map((cId) => ({ productId, categoryId: cId }));
         await tx.insert(productCategories).values(links);
       }
 

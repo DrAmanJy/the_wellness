@@ -1,4 +1,4 @@
-import { db, products, productCategories, categories, eq } from '@wellness/db';
+import { db, products, productCategories, categories, eq, and, isNull } from '@wellness/db';
 
 // 10,000 products, each with a random price and assigned to random categories
 const NUM_PRODUCTS = 10000;
@@ -9,7 +9,11 @@ async function seed() {
 
   // Create or resolve the benchmark category first
   let cat = (
-    await db.select().from(categories).where(eq(categories.slug, 'benchmark-category')).limit(1)
+    await db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.slug, 'benchmark-category'), isNull(categories.deletedAt)))
+      .limit(1)
   )[0];
   if (!cat) {
     const [inserted] = await db
@@ -58,7 +62,7 @@ async function seed() {
   }
   if (!sysUser) throw new Error('Failed to create system user');
 
-  for (let i = 0; i < NUM_PRODUCTS; i += BATCH_SIZE) {
+  for (let i = benchmarkProductCount; i < NUM_PRODUCTS; i += BATCH_SIZE) {
     const batch = [];
     const size = Math.min(BATCH_SIZE, NUM_PRODUCTS - i);
 

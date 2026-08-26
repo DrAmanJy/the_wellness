@@ -39,3 +39,40 @@ export const CursorSchema = z.string().transform((val, ctx) => {
     return z.NEVER;
   }
 });
+
+/**
+ * JSON value type matching the JsonValue contract from @wellness/contracts.
+ */
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * Recursive JSON value schema — avoids z.any() while representing valid JSON.
+ */
+export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(JsonValueSchema),
+  ]),
+);
+
+export const JsonObjectSchema = z.record(JsonValueSchema);
+
+export const httpUrlSchema = z
+  .string()
+  .url()
+  .refine(
+    (val) => {
+      try {
+        const url = new URL(val);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Only HTTP and HTTPS URLs are allowed' },
+  );

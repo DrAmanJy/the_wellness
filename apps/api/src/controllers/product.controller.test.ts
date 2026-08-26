@@ -73,13 +73,36 @@ describe('Product API Controllers', () => {
     });
 
     it('produces distinct pages with no duplicates and deterministic ordering', async () => {
-      const t1 = new Date('2025-01-01T00:00:00Z');
-      const t2 = new Date('2025-01-02T00:00:00Z');
-      const t3 = new Date('2025-01-03T00:00:00Z');
-      await factories.createProduct({ name: 'P1', slug: 'p1', status: 'active', createdAt: t1 });
-      await factories.createProduct({ name: 'P2', slug: 'p2', status: 'active', createdAt: t2 });
-      await factories.createProduct({ name: 'P3', slug: 'p3', status: 'active', createdAt: t3 });
+      const sameTime = new Date('2025-01-01T00:00:00Z');
 
+      // Use fixed UUIDs so we can deterministically test the fallback ID sort
+      const id1 = '11111111-1111-1111-1111-111111111111';
+      const id2 = '22222222-2222-2222-2222-222222222222';
+      const id3 = '33333333-3333-3333-3333-333333333333';
+
+      await factories.createProduct({
+        id: id1,
+        name: 'P1',
+        slug: 'p1',
+        status: 'active',
+        createdAt: sameTime,
+      });
+      await factories.createProduct({
+        id: id2,
+        name: 'P2',
+        slug: 'p2',
+        status: 'active',
+        createdAt: sameTime,
+      });
+      await factories.createProduct({
+        id: id3,
+        name: 'P3',
+        slug: 'p3',
+        status: 'active',
+        createdAt: sameTime,
+      });
+
+      // Page size 2 should split the 3 tied records
       const res1 = await request(app).get('/api/products?limit=2');
       expect(res1.status).toBe(200);
       const page1 = (res1.body as ProductListResponse).data.items;
@@ -97,10 +120,10 @@ describe('Product API Controllers', () => {
       expect(uniqueIds.size).toBe(3); // No duplicates
 
       // Verify ordering is deterministic (descending by createdAt, then descending by id)
-      // Since P3 was created last, it should be first in results
-      expect(page1[0]?.slug).toBe('p3');
-      expect(page1[1]?.slug).toBe('p2');
-      expect(page2[0]?.slug).toBe('p1');
+      // Since createdAt is the same, they should be sorted by ID descending
+      expect(page1[0]?.slug).toBe('p3'); // id3
+      expect(page1[1]?.slug).toBe('p2'); // id2
+      expect(page2[0]?.slug).toBe('p1'); // id1
     });
   });
 

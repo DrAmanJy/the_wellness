@@ -38,6 +38,17 @@ describe('Validation Schemas', () => {
       expect(result.success).toBe(true);
     });
 
+    it('rejects names containing HTML tag boundary characters', () => {
+      const result1 = CreateCategorySchema.safeParse({
+        name: 'Test <script>',
+        slug: 'test-category',
+      });
+      expect(result1.success).toBe(false);
+
+      const result2 = CreateCategorySchema.safeParse({ name: 'Test >', slug: 'test-category' });
+      expect(result2.success).toBe(false);
+    });
+
     it('rejects slugs with spaces or uppercase', () => {
       const result1 = CreateCategorySchema.safeParse({ name: 'Test', slug: 'Test Slug' });
       expect(result1.success).toBe(false);
@@ -111,6 +122,17 @@ describe('Validation Schemas', () => {
       if (result.success) {
         expect(result.data.status).toBe('draft'); // Default value
       }
+    });
+
+    it('rejects names containing HTML tag boundary characters', () => {
+      const result1 = CreateProductSchema.safeParse({
+        name: 'Test <script>',
+        slug: 'test-product',
+      });
+      expect(result1.success).toBe(false);
+
+      const result2 = CreateProductSchema.safeParse({ name: 'Test >', slug: 'test-product' });
+      expect(result2.success).toBe(false);
     });
 
     it('rejects invalid status', () => {

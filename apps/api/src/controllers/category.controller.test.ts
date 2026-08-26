@@ -247,6 +247,11 @@ describe('Category API Controllers', () => {
       expect(res.status).toBe(200);
     });
 
+    it('rejects unauthenticated requests (401)', async () => {
+      const res = await request(app).delete('/api/categories/00000000-0000-0000-0000-000000000000');
+      expect(res.status).toBe(401);
+    });
+
     it('rejects customer requests for delete (403)', async () => {
       const cat = await factories.createCategory();
       const res = await request(app)

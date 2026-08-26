@@ -145,6 +145,13 @@ describe('ProductService', () => {
       ).rejects.toThrow(NotFoundError);
     });
 
+    it('throws NotFoundError when updating a soft-deleted product', async () => {
+      const p = await factories.createProduct({ name: 'Old' });
+      await productService.deleteProduct(p.id);
+      await expect(productService.updateProduct(p.id, { name: 'New' }, 'user-1')).rejects.toThrow(
+        NotFoundError,
+      );
+    });
     it('throws ConflictError for duplicate slug on update', async () => {
       await factories.createProduct({ slug: 'existing-slug' });
       const p = await factories.createProduct({ slug: 'update-me' });

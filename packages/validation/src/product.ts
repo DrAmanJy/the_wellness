@@ -1,25 +1,6 @@
 import { z } from 'zod';
 
-/**
- * JSON value type matching the JsonValue contract from @wellness/contracts.
- */
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
-/**
- * Recursive JSON value schema — avoids z.any() while representing valid JSON.
- */
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(JsonValueSchema),
-  ]),
-);
-
-const JsonObjectSchema = z.record(JsonValueSchema);
+import { JsonObjectSchema } from './common';
 
 const BaseProductSchema = z.object({
   name: z
@@ -89,4 +70,17 @@ export const CreateVariantSchema = z
     },
   );
 
-export const UpdateVariantSchema = CreateVariantSchema.innerType().partial();
+export const UpdateVariantSchema = CreateVariantSchema.innerType()
+  .partial()
+  .refine(
+    (data) => {
+      if (data.compareAtPrice != null && data.price != null) {
+        return data.compareAtPrice >= data.price;
+      }
+      return true;
+    },
+    {
+      message: 'compareAtPrice must be greater than or equal to price',
+      path: ['compareAtPrice'],
+    },
+  );

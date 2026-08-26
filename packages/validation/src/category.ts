@@ -1,40 +1,6 @@
 import { z } from 'zod';
 
-/**
- * JSON value type matching the JsonValue contract from @wellness/contracts.
- */
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
-/**
- * Recursive JSON value schema — avoids z.any() while representing valid JSON.
- */
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(JsonValueSchema),
-  ]),
-);
-
-const JsonObjectSchema = z.record(JsonValueSchema);
-
-const httpUrlSchema = z
-  .string()
-  .url()
-  .refine(
-    (val) => {
-      try {
-        const url = new URL(val);
-        return url.protocol === 'http:' || url.protocol === 'https:';
-      } catch {
-        return false;
-      }
-    },
-    { message: 'Only HTTP and HTTPS URLs are allowed' },
-  );
+import { JsonObjectSchema, httpUrlSchema } from './common';
 
 export const CreateCategorySchema = z.object({
   name: z
