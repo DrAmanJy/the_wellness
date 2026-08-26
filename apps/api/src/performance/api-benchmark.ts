@@ -3,6 +3,7 @@ import autocannon from 'autocannon';
 const URL = 'http://localhost:5000';
 const DURATION = 10;
 const CONCURRENCY_LEVELS = [1, 10, 25, 50, 100];
+const LIMITS = [10, 50, 100];
 
 async function runBenchmark(name: string, url: string, connections: number) {
   console.log(`\n========================================`);
@@ -19,7 +20,7 @@ async function runBenchmark(name: string, url: string, connections: number) {
     }, (err, result) => {
       if (err) {
         console.error(err);
-        return reject(err);
+        reject(err); return;
       }
       
       console.log(`Requests/sec: ${result.requests.average}`);

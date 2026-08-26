@@ -1,5 +1,6 @@
-import { db, role, userRole, user } from '@wellness/db';
 import { eq } from 'drizzle-orm';
+
+import { db, role, userRole, user } from '@wellness/db';
 
 async function bootstrap() {
   const userId = process.argv[2];

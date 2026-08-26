@@ -1,20 +1,19 @@
 import { db, products, productCategories, categories, eq } from '@wellness/db';
-import { env } from '@wellness/config';
 
 // 10,000 products, each with a random price and assigned to random categories
 const NUM_PRODUCTS = 10000;
 const BATCH_SIZE = 1000;
 
 async function seed() {
-  console.log(`Checking benchmark dataset for ${NUM_PRODUCTS} products...`);
+  console.log(`Checking benchmark dataset for ${String(NUM_PRODUCTS)} products...`);
   
   const existingProducts = await db.$count(products);
   if (existingProducts >= NUM_PRODUCTS) {
-    console.log(`Database already has ${existingProducts} products. Skipping seed.`);
+    console.log(`Database already has ${String(existingProducts)} products. Skipping seed.`);
     return;
   }
 
-  console.log(`Starting to seed ${NUM_PRODUCTS} products...`);
+  console.log(`Starting to seed ${String(NUM_PRODUCTS)} products...`);
 
   // Create a base benchmark category
   let cat = (await db.select().from(categories).where(eq(categories.slug, 'benchmark-category')).limit(1))[0];
@@ -28,6 +27,7 @@ async function seed() {
       .returning();
     cat = inserted;
   }
+  if (!cat) throw new Error('Failed to create benchmark category');
 
   // Create or get a system user
   const { user } = await import('@wellness/db');
@@ -46,6 +46,7 @@ async function seed() {
       .returning();
     sysUser = insertedUser;
   }
+  if (!sysUser) throw new Error('Failed to create system user');
 
   for (let i = 0; i < NUM_PRODUCTS; i += BATCH_SIZE) {
     const batch = [];
@@ -54,11 +55,11 @@ async function seed() {
     for (let j = 0; j < size; j++) {
       const idx = i + j;
       batch.push({
-        name: `Benchmark Product ${idx}`,
-        slug: `benchmark-product-${idx}-${Date.now()}`,
-        description: `This is a benchmark product generated for performance testing. ID: ${idx}`,
-        shortDescription: `Benchmark ${idx}`,
-        brand: `Brand ${idx % 10}`,
+        name: `Benchmark Product ${String(idx)}`,
+        slug: `benchmark-product-${String(idx)}-${String(Date.now())}`,
+        description: `This is a benchmark product generated for performance testing. ID: ${String(idx)}`,
+        shortDescription: `Benchmark ${String(idx)}`,
+        brand: `Brand ${String(idx % 10)}`,
         status: 'active' as const,
         isFeatured: idx % 100 === 0, // 1% featured
         createdBy: sysUser.id,
@@ -67,7 +68,7 @@ async function seed() {
     }
 
     // Insert batch of products
-    console.log(`Inserting products ${i} to ${i + size - 1}...`);
+    console.log(`Inserting products ${String(i)} to ${String(i + size - 1)}...`);
     const insertedProducts = await db.insert(products).values(batch).returning({ id: products.id });
 
     // Link all to the benchmark category
@@ -84,7 +85,7 @@ async function seed() {
 seed().then(() => {
   console.log('Done.');
   process.exit(0);
-}).catch(e => {
+}).catch((e: unknown) => {
   console.error(e);
   process.exit(1);
 });
