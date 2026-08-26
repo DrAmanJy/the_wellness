@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { db, products, productCategories, eq, categories, productVariants } from '@wellness/db';
-import { NotFoundError } from '@wellness/utils';
+import { NotFoundError, ConflictError } from '@wellness/utils';
 
 import { productService } from './product.service';
 import { factories } from '../test/factories';
@@ -26,7 +26,7 @@ describe('ProductService', () => {
       name: 'Test Product',
       slug: 'test-product-' + String(Date.now()),
       description: 'A test product',
-      categoryIds: ['invalid-uuid-that-causes-fk-violation'], // This should throw a DB error
+      categoryIds: ['00000000-0000-0000-0000-000000000001'], // Valid UUID format but nonexistent — triggers FK violation
     };
 
     let errorThrown = false;
@@ -148,11 +148,9 @@ describe('ProductService', () => {
     it('throws ConflictError for duplicate slug on update', async () => {
       await factories.createProduct({ slug: 'existing-slug' });
       const p = await factories.createProduct({ slug: 'update-me' });
-      // Depending on DB or service layer, it might throw a generic DB error or ConflictError
-      // Let's assume the DB constraint throws. We just verify it rejects.
       await expect(
         productService.updateProduct(p.id, { slug: 'existing-slug' }, 'user-1'),
-      ).rejects.toThrow();
+      ).rejects.toThrow(ConflictError);
     });
 
     it('rolls back product update if category assignment fails', async () => {
@@ -162,7 +160,7 @@ describe('ProductService', () => {
         p.id,
         {
           name: 'New Name',
-          categoryIds: ['invalid-uuid-that-causes-fk-violation'],
+          categoryIds: ['00000000-0000-0000-0000-000000000001'], // Valid UUID but nonexistent — FK violation
         },
         'user-1',
       );
@@ -206,11 +204,27 @@ describe('ProductService', () => {
     });
 
     it('supports cursor pagination for public catalog with distinct pages and correct DTO', async () => {
-      const p1 = await factories.createProduct({ name: 'P1', slug: 'prod-1', status: 'active' });
-      await new Promise((r) => setTimeout(r, 10)); // Guarantee time diff
-      const p2 = await factories.createProduct({ name: 'P2', slug: 'prod-2', status: 'active' });
-      await new Promise((r) => setTimeout(r, 10));
-      const p3 = await factories.createProduct({ name: 'P3', slug: 'prod-3', status: 'active' });
+      const t1 = new Date('2025-06-01T00:00:00Z');
+      const t2 = new Date('2025-06-02T00:00:00Z');
+      const t3 = new Date('2025-06-03T00:00:00Z');
+      const p1 = await factories.createProduct({
+        name: 'P1',
+        slug: 'prod-1',
+        status: 'active',
+        createdAt: t1,
+      });
+      const p2 = await factories.createProduct({
+        name: 'P2',
+        slug: 'prod-2',
+        status: 'active',
+        createdAt: t2,
+      });
+      const p3 = await factories.createProduct({
+        name: 'P3',
+        slug: 'prod-3',
+        status: 'active',
+        createdAt: t3,
+      });
 
       const page1 = await productService.getPublicProducts(2);
       expect(page1.items.length).toBe(2);
@@ -231,16 +245,18 @@ describe('ProductService', () => {
         expect(dto).not.toHaveProperty('updatedBy');
       }
 
-      if (page1.nextCursor) {
-        const parsed = JSON.parse(Buffer.from(page1.nextCursor, 'base64').toString('utf8')) as {
-          createdAt: string;
-          id: string;
-        };
-        const cursorObj = { createdAt: new Date(parsed.createdAt), id: parsed.id };
-        const page2 = await productService.getPublicProducts(2, cursorObj);
-        expect(page2.items.length).toBe(1);
-        expect(page2.items[0]?.id).toBe(p1.id);
-      }
+      // nextCursor must be present since there are more items
+      expect(page1.nextCursor).toBeTruthy();
+      const parsed = JSON.parse(
+        Buffer.from(page1.nextCursor as string, 'base64').toString('utf8'),
+      ) as {
+        createdAt: string;
+        id: string;
+      };
+      const cursorObj = { createdAt: new Date(parsed.createdAt), id: parsed.id };
+      const page2 = await productService.getPublicProducts(2, cursorObj);
+      expect(page2.items.length).toBe(1);
+      expect(page2.items[0]?.id).toBe(p1.id);
     });
 
     it('filters out soft-deleted variants and categories when fetching product', async () => {

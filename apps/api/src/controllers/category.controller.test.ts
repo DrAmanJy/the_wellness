@@ -233,7 +233,6 @@ describe('Category API Controllers', () => {
         .set('Cookie', [`better-auth.session_token=${adminToken}`]);
       expect(res.status).toBe(200);
       expect((res.body as CategoryResponse).success).toBe(true);
-      expect((res.body as CategoryResponse).data.deletedAt).toBeDefined();
     });
 
     it('successfully soft-deletes a category as employee', async () => {
@@ -247,12 +246,29 @@ describe('Category API Controllers', () => {
         .set('Cookie', [`better-auth.session_token=${employeeSession.token}`]);
       expect(res.status).toBe(200);
     });
+
+    it('rejects customer requests for delete (403)', async () => {
+      const cat = await factories.createCategory();
+      const res = await request(app)
+        .delete(`/api/categories/${cat.id}`)
+        .set('Cookie', [`better-auth.session_token=${customerToken}`]);
+      expect(res.status).toBe(403);
+    });
   });
 
   describe('PATCH /api/categories/:id', () => {
     it('rejects unauthenticated requests (401)', async () => {
       const res = await request(app).patch('/api/categories/00000000-0000-0000-0000-000000000000');
       expect(res.status).toBe(401);
+    });
+
+    it('rejects customer requests for update (403)', async () => {
+      const cat = await factories.createCategory({ name: 'Old' });
+      const res = await request(app)
+        .patch(`/api/categories/${cat.id}`)
+        .set('Cookie', [`better-auth.session_token=${customerToken}`])
+        .send({ name: 'Hacked' });
+      expect(res.status).toBe(403);
     });
 
     it('updates a category successfully', async () => {

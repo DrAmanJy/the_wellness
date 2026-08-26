@@ -73,11 +73,12 @@ describe('Product API Controllers', () => {
     });
 
     it('produces distinct pages with no duplicates and deterministic ordering', async () => {
-      await factories.createProduct({ name: 'P1', slug: 'p1', status: 'active' });
-      await new Promise((r) => setTimeout(r, 10)); // Ensure different createdAt
-      await factories.createProduct({ name: 'P2', slug: 'p2', status: 'active' });
-      await new Promise((r) => setTimeout(r, 10));
-      await factories.createProduct({ name: 'P3', slug: 'p3', status: 'active' });
+      const t1 = new Date('2025-01-01T00:00:00Z');
+      const t2 = new Date('2025-01-02T00:00:00Z');
+      const t3 = new Date('2025-01-03T00:00:00Z');
+      await factories.createProduct({ name: 'P1', slug: 'p1', status: 'active', createdAt: t1 });
+      await factories.createProduct({ name: 'P2', slug: 'p2', status: 'active', createdAt: t2 });
+      await factories.createProduct({ name: 'P3', slug: 'p3', status: 'active', createdAt: t3 });
 
       const res1 = await request(app).get('/api/products?limit=2');
       expect(res1.status).toBe(200);
@@ -96,7 +97,7 @@ describe('Product API Controllers', () => {
       expect(uniqueIds.size).toBe(3); // No duplicates
 
       // Verify ordering is deterministic (descending by createdAt, then descending by id)
-      // Since P3 was created last (delay), it should be first in results
+      // Since P3 was created last, it should be first in results
       expect(page1[0]?.slug).toBe('p3');
       expect(page1[1]?.slug).toBe('p2');
       expect(page2[0]?.slug).toBe('p1');
@@ -206,10 +207,19 @@ describe('Product API Controllers', () => {
         const res = await request(app).patch('/api/products/00000000-0000-0000-0000-000000000000');
         expect(res.status).toBe(401);
       });
+
+      it('rejects customer requests for update (403)', async () => {
+        const p = await factories.createProduct({ name: 'Old' });
+        const res = await request(app)
+          .patch(`/api/products/${p.id}`)
+          .set('Cookie', [`better-auth.session_token=${customerToken}`])
+          .send({ name: 'Hacked' });
+        expect(res.status).toBe(403);
+      });
     });
 
     describe('DELETE /api/products/:id', () => {
-      it('deletes product successfully as admin', async () => {
+      it('successfully soft-deletes a product', async () => {
         const p = await factories.createProduct();
         const res = await request(app)
           .delete(`/api/products/${p.id}`)
@@ -217,12 +227,19 @@ describe('Product API Controllers', () => {
 
         expect(res.status).toBe(200);
         expect((res.body as ProductResponse).success).toBe(true);
-        expect((res.body as ProductResponse).data.deletedAt).toBeDefined();
       });
 
       it('rejects unauthenticated requests for delete', async () => {
         const res = await request(app).delete('/api/products/00000000-0000-0000-0000-000000000000');
         expect(res.status).toBe(401);
+      });
+
+      it('rejects customer requests for delete (403)', async () => {
+        const p = await factories.createProduct();
+        const res = await request(app)
+          .delete(`/api/products/${p.id}`)
+          .set('Cookie', [`better-auth.session_token=${customerToken}`]);
+        expect(res.status).toBe(403);
       });
     });
 

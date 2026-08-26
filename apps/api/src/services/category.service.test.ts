@@ -51,7 +51,7 @@ describe('CategoryService', () => {
     });
 
     it('rejects invalid or non-existent parent', async () => {
-      // It fails either from app validation or DB foreign key
+      // It fails from app validation with ConflictError
       await expect(
         categoryService.createCategory(
           {
@@ -61,7 +61,18 @@ describe('CategoryService', () => {
           },
           adminId,
         ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(ConflictError);
+
+      await expect(
+        categoryService.createCategory(
+          {
+            name: 'Child',
+            slug: 'child',
+            parentId: '00000000-0000-0000-0000-000000000000',
+          },
+          adminId,
+        ),
+      ).rejects.toThrow('Parent category does not exist');
     });
   });
 

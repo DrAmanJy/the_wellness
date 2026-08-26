@@ -33,6 +33,15 @@ async function runBenchmark(name: string, url: string, connections: number) {
         console.log(`Errors: ${String(result.errors)}`);
         console.log(`Timeouts: ${String(result.timeouts)}`);
 
+        if (result.errors > 0 || result.timeouts > 0) {
+          reject(
+            new Error(
+              `Benchmark "${name}" failed: ${String(result.errors)} errors, ${String(result.timeouts)} timeouts`,
+            ),
+          );
+          return;
+        }
+
         resolve(result);
       },
     );

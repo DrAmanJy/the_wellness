@@ -7,6 +7,21 @@ import { AppError } from '@wellness/utils';
 import type { AuthContext } from './auth.middleware';
 import { resolveRoles, requireRole } from './authorization.middleware';
 
+/**
+ * Create a next function that resolves a promise when called.
+ * This replaces setTimeout-based microtask flushing with deterministic signaling.
+ */
+function createNextWithPromise() {
+  let resolve: () => void;
+  const called = new Promise<void>((r) => {
+    resolve = r;
+  });
+  const fn = vi.fn(() => {
+    resolve();
+  });
+  return { next: fn as unknown as NextFunction & ReturnType<typeof vi.fn>, called };
+}
+
 describe('Authorization Middleware', () => {
   let req: Partial<Request & { auth?: AuthContext }>;
   let res: Partial<Response>;
@@ -34,10 +49,11 @@ describe('Authorization Middleware', () => {
   describe('resolveRoles', () => {
     it('throws 401 if auth context is missing entirely', async () => {
       delete req.auth;
-      resolveRoles(req as Request, res as Response, next);
-      await new Promise((r) => setTimeout(r, 0));
+      const { next: promiseNext, called } = createNextWithPromise();
+      resolveRoles(req as Request, res as Response, promiseNext);
+      await called;
 
-      expect(next).toHaveBeenCalledWith(
+      expect(promiseNext).toHaveBeenCalledWith(
         expect.objectContaining({
           statusCode: 401,
           message: 'Unauthorized',
@@ -48,10 +64,11 @@ describe('Authorization Middleware', () => {
     it('throws 401 if auth userId is missing in context', async () => {
       // Simulate missing userId for testing
       delete (req.auth as unknown as { userId?: string }).userId;
-      resolveRoles(req as Request, res as Response, next);
-      await new Promise((r) => setTimeout(r, 0));
+      const { next: promiseNext, called } = createNextWithPromise();
+      resolveRoles(req as Request, res as Response, promiseNext);
+      await called;
 
-      expect(next).toHaveBeenCalledWith(
+      expect(promiseNext).toHaveBeenCalledWith(
         expect.objectContaining({
           statusCode: 401,
           message: 'Unauthorized',
@@ -68,11 +85,12 @@ describe('Authorization Middleware', () => {
       };
       selectSpy.mockReturnValue(mockQueryBuilder);
 
-      resolveRoles(req as Request, res as Response, next);
-      await new Promise((r) => setTimeout(r, 0));
+      const { next: promiseNext, called } = createNextWithPromise();
+      resolveRoles(req as Request, res as Response, promiseNext);
+      await called;
 
       expect(req.auth?.roles).toEqual(['customer', 'editor']);
-      expect(next).toHaveBeenCalledWith(); // success
+      expect(promiseNext).toHaveBeenCalledWith(); // success
     });
 
     it('handles user with zero roles gracefully (empty array)', async () => {
@@ -83,11 +101,12 @@ describe('Authorization Middleware', () => {
       };
       selectSpy.mockReturnValue(mockQueryBuilder);
 
-      resolveRoles(req as Request, res as Response, next);
-      await new Promise((r) => setTimeout(r, 0));
+      const { next: promiseNext, called } = createNextWithPromise();
+      resolveRoles(req as Request, res as Response, promiseNext);
+      await called;
 
       expect(req.auth?.roles).toEqual([]);
-      expect(next).toHaveBeenCalledWith(); // success
+      expect(promiseNext).toHaveBeenCalledWith(); // success
     });
 
     it('passes database errors down the chain for global error handler', async () => {
@@ -99,10 +118,11 @@ describe('Authorization Middleware', () => {
       };
       selectSpy.mockReturnValue(mockQueryBuilder);
 
-      resolveRoles(req as Request, res as Response, next);
-      await new Promise((r) => setTimeout(r, 0));
+      const { next: promiseNext, called } = createNextWithPromise();
+      resolveRoles(req as Request, res as Response, promiseNext);
+      await called;
 
-      expect(next).toHaveBeenCalledWith(dbError); // passes exact error to next()
+      expect(promiseNext).toHaveBeenCalledWith(dbError); // passes exact error to next()
       expect(req.auth?.roles).toEqual([]); // Roles must not be populated silently
     });
   });
@@ -186,6 +206,40 @@ describe('Authorization Middleware', () => {
 
     it('throws 401 Unauthorized if roles array is undefined on auth context', () => {
       delete (req.auth as unknown as { roles?: readonly string[] }).roles;
+      const middleware = requireRole('admin');
+
+      try {
+        middleware(req as Request, res as Response, next);
+        expect.fail('Should have thrown');
+      } catch (error: unknown) {
+        expect(error).toBeInstanceOf(AppError);
+        expect((error as AppError).statusCode).toBe(401);
+      }
+    });
+
+    it('throws 401 Unauthorized if roles is a string instead of array', () => {
+      (req as { auth: { userId: string; sessionId: string; roles: unknown } }).auth = {
+        userId: '1',
+        sessionId: '1',
+        roles: 'admin',
+      };
+      const middleware = requireRole('admin');
+
+      try {
+        middleware(req as Request, res as Response, next);
+        expect.fail('Should have thrown');
+      } catch (error: unknown) {
+        expect(error).toBeInstanceOf(AppError);
+        expect((error as AppError).statusCode).toBe(401);
+      }
+    });
+
+    it('throws 401 Unauthorized if roles is an object instead of array', () => {
+      (req as { auth: { userId: string; sessionId: string; roles: unknown } }).auth = {
+        userId: '1',
+        sessionId: '1',
+        roles: { admin: true },
+      };
       const middleware = requireRole('admin');
 
       try {

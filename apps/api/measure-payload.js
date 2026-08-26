@@ -3,8 +3,13 @@ const http = require('http');
 async function measure(limit) {
   return new Promise((resolve, reject) => {
     const req = http.get(`http://localhost:5000/api/products?limit=${limit}`, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode}`));
+        return;
+      }
       let data = '';
-      res.on('data', (chunk) => data += chunk);
+      res.on('data', (chunk) => (data += chunk));
       res.on('end', () => resolve(Buffer.byteLength(data, 'utf8')));
     });
     req.on('error', reject);
