@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CreateCategorySchema, CreateProductSchema, CreateVariantSchema, paginationSchema } from './index';
+
+import {
+  CreateCategorySchema,
+  CreateProductSchema,
+  CreateVariantSchema,
+  paginationSchema,
+} from './index';
 
 describe('Validation Schemas', () => {
   describe('Pagination Schema', () => {
@@ -27,7 +33,7 @@ describe('Validation Schemas', () => {
     it('accepts valid category payload', () => {
       const result = CreateCategorySchema.safeParse({
         name: 'Test Category',
-        slug: 'test-category'
+        slug: 'test-category',
       });
       expect(result.success).toBe(true);
     });
@@ -50,7 +56,7 @@ describe('Validation Schemas', () => {
       const result = CreateCategorySchema.safeParse({
         name: 'Test',
         slug: 'test',
-        parentId: 'invalid-uuid'
+        parentId: 'invalid-uuid',
       });
       expect(result.success).toBe(false);
     });
@@ -60,7 +66,7 @@ describe('Validation Schemas', () => {
     it('accepts valid product payload', () => {
       const result = CreateProductSchema.safeParse({
         name: 'Test Product',
-        slug: 'test-product'
+        slug: 'test-product',
       });
       expect(result.success).toBe(true);
       if (result.success) {
@@ -72,7 +78,7 @@ describe('Validation Schemas', () => {
       const result = CreateProductSchema.safeParse({
         name: 'Test',
         slug: 'test',
-        status: 'invalid-status'
+        status: 'invalid-status',
       });
       expect(result.success).toBe(false);
     });
@@ -82,7 +88,7 @@ describe('Validation Schemas', () => {
       const result = CreateProductSchema.safeParse({
         name: 'Test',
         slug: 'test',
-        shortDescription: longDesc
+        shortDescription: longDesc,
       });
       expect(result.success).toBe(false);
     });
@@ -93,7 +99,7 @@ describe('Validation Schemas', () => {
       const result = CreateVariantSchema.safeParse({
         name: 'Test Variant',
         sku: 'TEST-01',
-        price: 19.99
+        price: 19.99,
       });
       expect(result.success).toBe(true);
     });
@@ -102,7 +108,7 @@ describe('Validation Schemas', () => {
       const result = CreateVariantSchema.safeParse({
         name: 'Test',
         sku: 'TEST',
-        price: -10
+        price: -10,
       });
       expect(result.success).toBe(false);
     });
@@ -112,7 +118,7 @@ describe('Validation Schemas', () => {
         name: 'Test',
         sku: 'TEST',
         price: 10,
-        compareAtPrice: -5
+        compareAtPrice: -5,
       });
       expect(result.success).toBe(false);
     });
@@ -122,7 +128,7 @@ describe('Validation Schemas', () => {
         name: 'Test',
         sku: 'TEST',
         price: 10,
-        currency: 'US' // Too short
+        currency: 'US', // Too short
       });
       expect(result.success).toBe(false);
     });
