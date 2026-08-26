@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+
 import { auth } from '@wellness/auth';
 import { UnauthorizedError } from '@wellness/utils';
 import { asyncHandler } from '@wellness/utils';
@@ -29,7 +30,7 @@ export const requireAuth = asyncHandler(async (req: Request, res: Response, next
     throw new UnauthorizedError();
   }
 
-  if (!session || !session.user || !session.session) {
+  if (!session || !session.user || !session.session || !session.user.id || !session.session.id) {
     throw new UnauthorizedError();
   }
 

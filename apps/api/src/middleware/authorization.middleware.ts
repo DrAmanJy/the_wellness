@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+
 import { db, userRole, role, eq } from '@wellness/db';
 import { AppError, UnauthorizedError } from '@wellness/utils';
 import { asyncHandler } from '@wellness/utils';
