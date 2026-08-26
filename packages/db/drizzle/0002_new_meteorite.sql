@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "product_images_primary_unique_idx" ON "product_images" USING btree ("product_id") WHERE "product_images"."is_primary" = true;

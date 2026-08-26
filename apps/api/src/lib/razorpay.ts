@@ -1,4 +1,5 @@
 import Razorpay from 'razorpay';
+
 import { env } from '@wellness/config';
 
 export const razorpay = new Razorpay({

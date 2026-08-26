@@ -1,17 +1,21 @@
+import { toNodeHandler } from 'better-auth/node';
+import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import cors from 'cors';
 import hpp from 'hpp';
 import pinoHttp from 'pino-http';
-import { env } from '@wellness/config';
+
 import { auth } from '@wellness/auth';
-import { toNodeHandler } from 'better-auth/node';
+import { env } from '@wellness/config';
+
 import { logger } from './lib/logger';
 import { requestId } from './lib/request-id';
-import { globalRateLimiter } from './middleware/rate-limit.middleware';
-import { notFoundHandler } from './middleware/not-found.middleware';
 import { errorHandler } from './middleware/error.middleware';
+import { notFoundHandler } from './middleware/not-found.middleware';
+import { globalRateLimiter } from './middleware/rate-limit.middleware';
+import categoryRoutes from './routes/category.routes';
 import healthRoutes from './routes/health.routes';
+import productRoutes from './routes/product.routes';
 
 export const app = express();
 
@@ -33,15 +37,19 @@ app.use(requestId);
 app.use(
   pinoHttp({
     logger,
-    customProps: (req, res) => ({
+    customProps: (req) => ({
       requestId: req.id,
     }),
   }),
 );
 
 // Routes
-app.use('/api/auth', toNodeHandler(auth.handler));
+app.use('/api/auth', (req, res, next) => {
+  toNodeHandler(auth.handler)(req, res).catch(next);
+});
 app.use('/health', healthRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/products', productRoutes);
 
 // Error Handling
 app.use(notFoundHandler);

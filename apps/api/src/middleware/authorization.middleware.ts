@@ -1,11 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
+
 import { db, userRole, role, eq } from '@wellness/db';
 import { AppError, UnauthorizedError } from '@wellness/utils';
 import { asyncHandler } from '@wellness/utils';
 
+import type { AuthContext } from './auth.middleware';
+
 export const resolveRoles = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth) {
+  async (req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) => {
+    if (!req.auth?.userId) {
       throw new UnauthorizedError();
     }
 
@@ -21,12 +24,12 @@ export const resolveRoles = asyncHandler(
 );
 
 export const requireRole = (...allowedRoles: string[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.auth) {
+  return (req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) => {
+    if (!req.auth || !Array.isArray(req.auth.roles)) {
       throw new UnauthorizedError();
     }
 
-    const hasRole = req.auth.roles.some((r) => allowedRoles.includes(r));
+    const hasRole = req.auth.roles.some((r: string) => allowedRoles.includes(r));
     if (!hasRole) {
       throw new AppError(403, 'FORBIDDEN', 'Forbidden');
     }

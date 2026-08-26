@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+
 import { env } from '@wellness/config';
 import { db, role, userRole, eq } from '@wellness/db';
 

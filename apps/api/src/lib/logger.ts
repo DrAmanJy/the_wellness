@@ -1,4 +1,5 @@
 import pino from 'pino';
+
 import { env } from '@wellness/config';
 
 export const logger = pino({

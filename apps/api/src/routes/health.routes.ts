@@ -1,5 +1,7 @@
 import { Router } from 'express';
+
 import { pool } from '@wellness/db';
+import { asyncHandler } from '@wellness/utils';
 
 const router = Router();
 
@@ -14,30 +16,33 @@ router.get('/', (req, res) => {
 });
 
 // Heavyweight health check (checks DB and other dependencies)
-router.get('/ready', async (req, res) => {
-  try {
-    // Check PostgreSQL
-    await pool.query('SELECT 1');
+router.get(
+  '/ready',
+  asyncHandler(async (req, res) => {
+    try {
+      // Check PostgreSQL
+      await pool.query('SELECT 1');
 
-    res.json({
-      success: true,
-      data: {
-        status: 'ready',
-        dependencies: {
-          database: 'ok',
-          // Add others like razorpay here later
+      res.json({
+        success: true,
+        data: {
+          status: 'ready',
+          dependencies: {
+            database: 'ok',
+            // Add others like razorpay here later
+          },
         },
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'Health check failed',
-      },
-    });
-  }
-});
+      });
+    } catch {
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Health check failed',
+        },
+      });
+    }
+  }),
+);
 
 export default router;

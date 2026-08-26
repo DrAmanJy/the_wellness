@@ -8,6 +8,20 @@
       "when": 1787550606577,
       "tag": "0000_gray_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787651964462,
+      "tag": "0001_broad_violations",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787654930495,
+      "tag": "0002_new_meteorite",
+      "breakpoints": true
     }
   ]
 }
