@@ -60,6 +60,45 @@ describe('Validation Schemas', () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it('enforces 255-character maximum on description', () => {
+      const result = CreateCategorySchema.safeParse({
+        name: 'Test',
+        slug: 'test',
+        description: 'a'.repeat(256),
+      });
+      expect(result.success).toBe(false);
+
+      const ok = CreateCategorySchema.safeParse({
+        name: 'Test',
+        slug: 'test',
+        description: 'a'.repeat(255),
+      });
+      expect(ok.success).toBe(true);
+    });
+
+    it('rejects non-HTTP imageUrl schemes (javascript:, data:)', () => {
+      const js = CreateCategorySchema.safeParse({
+        name: 'Test',
+        slug: 'test',
+        imageUrl: 'javascript:alert(1)',
+      });
+      expect(js.success).toBe(false);
+
+      const data = CreateCategorySchema.safeParse({
+        name: 'Test',
+        slug: 'test',
+        imageUrl: 'data:text/html,<h1>hi</h1>',
+      });
+      expect(data.success).toBe(false);
+
+      const https = CreateCategorySchema.safeParse({
+        name: 'Test',
+        slug: 'test',
+        imageUrl: 'https://example.com/image.jpg',
+      });
+      expect(https.success).toBe(true);
+    });
   });
 
   describe('CreateProductSchema', () => {
@@ -83,7 +122,7 @@ describe('Validation Schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('prevents excessively long descriptions to prevent memory exhaustion', () => {
+    it('prevents excessively long shortDescription (500 char limit)', () => {
       const longDesc = 'a'.repeat(501);
       const result = CreateProductSchema.safeParse({
         name: 'Test',
@@ -91,6 +130,22 @@ describe('Validation Schemas', () => {
         shortDescription: longDesc,
       });
       expect(result.success).toBe(false);
+    });
+
+    it('enforces maximum length on description (10000 char limit)', () => {
+      const tooLong = CreateProductSchema.safeParse({
+        name: 'Test',
+        slug: 'test',
+        description: 'a'.repeat(10001),
+      });
+      expect(tooLong.success).toBe(false);
+
+      const ok = CreateProductSchema.safeParse({
+        name: 'Test',
+        slug: 'test',
+        description: 'a'.repeat(10000),
+      });
+      expect(ok.success).toBe(true);
     });
   });
 
@@ -121,6 +176,24 @@ describe('Validation Schemas', () => {
         compareAtPrice: -5,
       });
       expect(result.success).toBe(false);
+    });
+
+    it('rejects compareAtPrice less than price', () => {
+      const result = CreateVariantSchema.safeParse({
+        name: 'Test',
+        sku: 'TEST',
+        price: 50,
+        compareAtPrice: 40,
+      });
+      expect(result.success).toBe(false);
+
+      const ok = CreateVariantSchema.safeParse({
+        name: 'Test',
+        sku: 'TEST',
+        price: 50,
+        compareAtPrice: 50,
+      });
+      expect(ok.success).toBe(true);
     });
 
     it('requires exact 3 character currency code', () => {

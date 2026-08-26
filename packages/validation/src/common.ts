@@ -5,6 +5,8 @@ export const paginationSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(10),
 });
 
+export const LimitSchema = z.coerce.number().int().min(1).max(100);
+
 export type PaginationQuery = z.infer<typeof paginationSchema>;
 
 export const CursorSchema = z.string().transform((val, ctx) => {
