@@ -2,13 +2,16 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    pool: 'threads',
+    pool: 'forks',
     poolOptions: {
-      threads: {
-        singleThread: true,
+      forks: {
+        singleFork: true,
       },
     },
     fileParallelism: false,
+    sequence: {
+      concurrent: false,
+    },
     environment: 'node',
     coverage: {
       provider: 'v8',
@@ -20,14 +23,14 @@ export default defineConfig({
         'src/performance/**',
         'scripts/**',
         '**/*.test.ts',
-        '**/*.d.ts'
+        '**/*.d.ts',
       ],
       thresholds: {
         statements: 80,
         branches: 85,
         functions: 80,
         lines: 80,
-      }
-    }
+      },
+    },
   },
 });
