@@ -42,6 +42,12 @@ export const categories = pgTable(
         .on(table.slug)
         .where(sql`${table.deletedAt} IS NULL`),
       index('categories_tree_idx').on(table.parentId, table.isActive, table.sortOrder),
+      index('categories_name_trgm_idx').using('gin', sql`(${table.name}::text) gin_trgm_ops`),
+      index('categories_slug_trgm_idx').using('gin', sql`(${table.slug}::text) gin_trgm_ops`),
+      index('categories_description_trgm_idx').using(
+        'gin',
+        sql`(${table.description}::text) gin_trgm_ops`,
+      ),
     ];
   },
 );

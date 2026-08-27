@@ -54,6 +54,12 @@ export const products = pgTable(
       index('products_catalog_pagination_idx').on(table.status, table.createdAt),
       index('products_featured_catalog_idx').on(table.status, table.isFeatured, table.createdAt),
       index('products_category_primary_idx').on(table.categoryPrimaryId, table.status),
+      index('products_name_trgm_idx').using('gin', sql`(${table.name}::text) gin_trgm_ops`),
+      index('products_slug_trgm_idx').using('gin', sql`(${table.slug}::text) gin_trgm_ops`),
+      index('products_description_trgm_idx').using(
+        'gin',
+        sql`(${table.description}::text) gin_trgm_ops`,
+      ),
     ];
   },
 );
@@ -85,7 +91,7 @@ export const productVariants = pgTable(
       .notNull()
       .references(() => products.id),
     name: varchar('name', { length: 255 }).notNull(),
-    sku: varchar('sku', { length: 100 }).notNull().unique(),
+    sku: varchar('sku', { length: 100 }).notNull(),
     price: numeric('price', { precision: 10, scale: 2 }).notNull(),
     compareAtPrice: numeric('compare_at_price', { precision: 10, scale: 2 }),
     currency: varchar('currency', { length: 3 }).default('INR').notNull(),
@@ -103,6 +109,10 @@ export const productVariants = pgTable(
   (table) => {
     return [
       index('product_variants_idx').on(table.productId, table.isActive, table.sortOrder),
+      uniqueIndex('product_variants_sku_unique_idx')
+        .on(table.sku)
+        .where(sql`${table.deletedAt} IS NULL`),
+      index('product_variants_sku_trgm_idx').using('gin', sql`(${table.sku}::text) gin_trgm_ops`),
       check('product_variants_price_positive', sql`${table.price} >= 0`),
       check('product_variants_compare_at_price_positive', sql`${table.compareAtPrice} >= 0`),
       check(
@@ -139,7 +149,10 @@ export const productImages = pgTable(
       check('product_images_sort_order_positive', sql`${table.sortOrder} >= 0`),
       uniqueIndex('product_images_primary_unique_idx')
         .on(table.productId)
-        .where(sql`${table.isPrimary} = true`),
+        .where(sql`${table.isPrimary} = true AND ${table.variantId} IS NULL`),
+      uniqueIndex('product_images_variant_primary_unique_idx')
+        .on(table.variantId)
+        .where(sql`${table.isPrimary} = true AND ${table.variantId} IS NOT NULL`),
     ];
   },
 );
