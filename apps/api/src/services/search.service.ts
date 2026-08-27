@@ -10,6 +10,8 @@ import {
   ilike,
 } from '@wellness/db';
 
+import { toProductListDTO, toSearchSuggestionDTO } from './product.mapper';
+
 export class SearchService {
   async searchCatalog(query: string, limit = 20) {
     if (!query || query.trim() === '') {
@@ -65,7 +67,7 @@ export class SearchService {
       .limit(limit);
 
     return {
-      products: foundProducts,
+      products: foundProducts.map(toProductListDTO),
       categories: foundCategories,
     };
   }
@@ -113,7 +115,7 @@ export class SearchService {
       ...cSuggestions.map((c) => ({ ...c, type: 'category' as const })),
     ];
 
-    return suggestions.slice(0, limit);
+    return suggestions.slice(0, limit).map(toSearchSuggestionDTO);
   }
 }
 

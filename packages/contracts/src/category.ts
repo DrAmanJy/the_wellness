@@ -1,6 +1,14 @@
-import { JsonObject } from './common';
+export type CategoryListDTO = {
+  id: string;
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  parentId: string | null;
+  isActive: boolean;
+  sortOrder: number;
+};
 
-export type CategoryDTO = {
+export type CategoryDetailDTO = {
   id: string;
   name: string;
   slug: string;
@@ -9,5 +17,19 @@ export type CategoryDTO = {
   parentId: string | null;
   isActive: boolean;
   sortOrder: number;
-  metadata: JsonObject | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CategoryMutationDTO = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  imageUrl: string | null;
+  parentId: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
 };

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { app } from '../app';
 import { factories } from '../test/factories';
-import { CategoryResponse, CategoryListResponse } from '../test/test-utils';
+import { getResponseBody, CategoryListResponse, CategoryResponse } from '../test/test-utils';
 
 describe('Category API Controllers', () => {
   let adminToken: string;
@@ -48,17 +48,19 @@ describe('Category API Controllers', () => {
 
       const res = await request(app).get('/api/categories');
       expect(res.status).toBe(200);
-      expect((res.body as CategoryListResponse).success).toBe(true);
-      expect((res.body as CategoryListResponse).data.length).toBe(1);
+      const bodyList = getResponseBody<CategoryListResponse>(res);
+      expect(bodyList.success).toBe(true);
+      expect(bodyList.data.length).toBe(1);
 
       // Ensure only the active category is returned
-      const slugs = (res.body as CategoryListResponse).data.map((c) => c.slug);
+      const slugs = bodyList.data.map((c) => c.slug);
       expect(slugs).toContain('active-cat');
       expect(slugs).not.toContain('inactive-cat');
       expect(slugs).not.toContain('deleted-cat');
 
       // Verify DTO structure doesn't leak internal fields
-      const dto = (res.body as CategoryListResponse).data[0];
+      const dto = bodyList.data[0];
+      if (!dto) throw new Error('No item');
       expect(dto).not.toHaveProperty('createdBy');
       expect(dto).not.toHaveProperty('updatedBy');
       expect(dto).not.toHaveProperty('deletedAt');
@@ -74,14 +76,16 @@ describe('Category API Controllers', () => {
       await factories.createCategory({ name: 'Find Me', slug: 'find-me', isActive: true });
       const res = await request(app).get('/api/categories/find-me');
       expect(res.status).toBe(200);
-      expect((res.body as CategoryResponse).success).toBe(true);
-      expect((res.body as CategoryResponse).data.name).toBe('Find Me');
+      const body = getResponseBody<CategoryResponse>(res);
+      expect(body.success).toBe(true);
+      expect(body.data.name).toBe('Find Me');
     });
 
     it('returns 404 for non-existent category slug', async () => {
       const res = await request(app).get('/api/categories/does-not-exist');
       expect(res.status).toBe(404);
-      expect((res.body as CategoryResponse).success).toBe(false);
+      const body = getResponseBody<CategoryResponse>(res);
+      expect(body.success).toBe(false);
     });
 
     it('returns 404 for inactive category slug', async () => {
@@ -136,8 +140,9 @@ describe('Category API Controllers', () => {
         .send({ name: 'New Cat', slug: 'new-cat' });
 
       expect(res.status).toBe(201);
-      expect((res.body as CategoryResponse).success).toBe(true);
-      expect((res.body as CategoryResponse).data.slug).toBe('new-cat');
+      const body = getResponseBody<CategoryResponse>(res);
+      expect(body.success).toBe(true);
+      expect(body.data.slug).toBe('new-cat');
     });
 
     it('returns 400 for bad payloads', async () => {
@@ -147,9 +152,10 @@ describe('Category API Controllers', () => {
         .send({ name: '' }); // Invalid, slug missing, name empty
 
       expect(res.status).toBe(400);
-      expect((res.body as CategoryResponse).success).toBe(false);
+      const body = getResponseBody<CategoryResponse>(res);
+      expect(body.success).toBe(false);
       // Ensure we get Zod validation errors, not stack traces
-      expect((res.body as CategoryResponse).errors).toBeDefined();
+      expect(body.errors).toBeDefined();
     });
 
     it('returns 409 for duplicate slug', async () => {
@@ -232,7 +238,8 @@ describe('Category API Controllers', () => {
         .delete(`/api/categories/${cat.id}`)
         .set('Cookie', [`better-auth.session_token=${adminToken}`]);
       expect(res.status).toBe(200);
-      expect((res.body as CategoryResponse).success).toBe(true);
+      const body = getResponseBody<CategoryResponse>(res);
+      expect(body.success).toBe(true);
     });
 
     it('successfully soft-deletes a category as employee', async () => {
@@ -284,8 +291,9 @@ describe('Category API Controllers', () => {
         .send({ name: 'New' });
 
       expect(res.status).toBe(200);
-      expect((res.body as CategoryResponse).success).toBe(true);
-      expect((res.body as CategoryResponse).data.name).toBe('New');
+      const body = getResponseBody<CategoryResponse>(res);
+      expect(body.success).toBe(true);
+      expect(body.data.name).toBe('New');
     });
 
     it('updates a category successfully as employee', async () => {
@@ -300,7 +308,8 @@ describe('Category API Controllers', () => {
         .send({ name: 'New Emp' });
 
       expect(res.status).toBe(200);
-      expect((res.body as CategoryResponse).data.name).toBe('New Emp');
+      const body = getResponseBody<CategoryResponse>(res);
+      expect(body.data.name).toBe('New Emp');
     });
 
     it('returns 404 for updating non-existent category', async () => {

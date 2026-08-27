@@ -12,8 +12,11 @@ import {
   asc,
   sql,
   inArray,
+  SQL,
 } from '@wellness/db';
 import { NotFoundError, ConflictError } from '@wellness/utils';
+
+import { toProductMutationDTO, toVariantDTO, toProductImageDTO } from './product.mapper';
 
 export class ProductService {
   /**
@@ -32,7 +35,10 @@ export class ProductService {
   }
 
   async getPublicProducts(limit = 20, cursor?: { createdAt: Date; id: string }) {
-    let whereClause = and(eq(products.status, 'active'), isNull(products.deletedAt));
+    let whereClause: SQL | undefined = and(
+      eq(products.status, 'active'),
+      isNull(products.deletedAt),
+    );
     if (cursor) {
       if (isNaN(cursor.createdAt.getTime())) {
         throw new Error('Invalid cursor date');
@@ -174,15 +180,10 @@ export class ProductService {
         ),
       );
 
-    const productDto = { ...product };
-    delete (productDto as Partial<typeof productDto>).createdBy;
-    delete (productDto as Partial<typeof productDto>).updatedBy;
-    delete (productDto as Partial<typeof productDto>).deletedAt;
-
     return {
-      ...productDto,
-      variants,
-      images,
+      ...toProductMutationDTO(product),
+      variants: variants.map(toVariantDTO),
+      images: images.map(toProductImageDTO),
       categories: productCategoryData,
     };
   }
@@ -219,7 +220,7 @@ export class ProductService {
         await tx.insert(productCategories).values(categoryLinks);
       }
 
-      return newProduct;
+      return toProductMutationDTO(newProduct);
     });
   }
 
@@ -257,7 +258,7 @@ export class ProductService {
           }
         }
 
-        return product;
+        return toProductMutationDTO(product);
       });
     } catch (error: unknown) {
       // Map PostgreSQL unique violation to ConflictError
@@ -278,7 +279,7 @@ export class ProductService {
     if (!product) {
       throw new NotFoundError('Product not found');
     }
-    return product;
+    return toProductMutationDTO(product);
   }
 
   // Categories Assignment
@@ -355,7 +356,7 @@ export class ProductService {
       })
       .returning();
     if (!variant) throw new Error('Failed to create variant');
-    return variant;
+    return toVariantDTO(variant);
   }
 
   async updateVariant(
@@ -381,7 +382,7 @@ export class ProductService {
       .returning();
 
     if (!variant) throw new NotFoundError('Variant not found or does not belong to product');
-    return variant;
+    return toVariantDTO(variant);
   }
 
   async deleteVariant(productId: string, variantId: string) {
@@ -399,7 +400,7 @@ export class ProductService {
       )
       .returning();
     if (!variant) throw new NotFoundError('Variant not found or does not belong to product');
-    return variant;
+    return toVariantDTO(variant);
   }
 
   // Images CRUD
@@ -441,7 +442,7 @@ export class ProductService {
         })
         .returning();
       if (!image) throw new Error('Failed to create image');
-      return image;
+      return toProductImageDTO(image);
     });
   }
 
@@ -476,7 +477,7 @@ export class ProductService {
         .where(eq(productImages.id, imageId))
         .returning();
       if (!image) throw new Error('Failed to update image');
-      return image;
+      return toProductImageDTO(image);
     });
   }
 
@@ -488,7 +489,7 @@ export class ProductService {
       .where(and(eq(productImages.id, imageId), eq(productImages.productId, productId)))
       .returning();
     if (!image) throw new NotFoundError('Image not found or does not belong to product');
-    return image;
+    return toProductImageDTO(image);
   }
 
   /**
