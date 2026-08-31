@@ -1,40 +1,24 @@
 import { db, categories, productCategories, eq, isNull, and, asc, sql } from '@wellness/db';
 import { NotFoundError, ConflictError } from '@wellness/utils';
 
+import { toCategoryListDTO, toCategoryDetailDTO, toCategoryMutationDTO } from './category.mapper';
+
 const MAX_CATEGORY_DEPTH = 50;
 
 export class CategoryService {
   async getPublicCategories() {
-    return db
-      .select({
-        id: categories.id,
-        name: categories.name,
-        slug: categories.slug,
-        description: categories.description,
-        imageUrl: categories.imageUrl,
-        parentId: categories.parentId,
-        isActive: categories.isActive,
-        sortOrder: categories.sortOrder,
-        metadata: categories.metadata,
-      })
+    const results = await db
+      .select()
       .from(categories)
       .where(and(eq(categories.isActive, true), isNull(categories.deletedAt)))
       .orderBy(asc(categories.sortOrder));
+
+    return results.map(toCategoryListDTO);
   }
 
   async getCategoryBySlug(slug: string) {
     const [category] = await db
-      .select({
-        id: categories.id,
-        name: categories.name,
-        slug: categories.slug,
-        description: categories.description,
-        imageUrl: categories.imageUrl,
-        parentId: categories.parentId,
-        isActive: categories.isActive,
-        sortOrder: categories.sortOrder,
-        metadata: categories.metadata,
-      })
+      .select()
       .from(categories)
       .where(
         and(eq(categories.slug, slug), eq(categories.isActive, true), isNull(categories.deletedAt)),
@@ -45,7 +29,7 @@ export class CategoryService {
       throw new NotFoundError('Category not found');
     }
 
-    return category;
+    return toCategoryDetailDTO(category);
   }
   async createCategory(data: typeof categories.$inferInsert, userId: string) {
     if (data.parentId) {
@@ -60,7 +44,7 @@ export class CategoryService {
       })
       .returning();
     if (!category) throw new Error('Failed to create category');
-    return category;
+    return toCategoryMutationDTO(category);
   }
 
   async updateCategory(id: string, data: Partial<typeof categories.$inferInsert>, userId: string) {
@@ -79,7 +63,7 @@ export class CategoryService {
       .returning();
 
     if (!category) throw new NotFoundError('Category not found');
-    return category;
+    return toCategoryMutationDTO(category);
   }
 
   async deleteCategory(id: string) {
@@ -109,7 +93,7 @@ export class CategoryService {
       .returning();
 
     if (!category) throw new NotFoundError('Category not found');
-    return category;
+    return toCategoryMutationDTO(category);
   }
 
   private async validateParentId(parentId: string, currentId?: string) {

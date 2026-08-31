@@ -1,7 +1,11 @@
-import { Response } from 'supertest';
-
-import type { CategoryDTO } from '@wellness/contracts';
-import type { ProductListDTO, ProductDetailDTO } from '@wellness/contracts';
+import type {
+  CategoryDetailDTO,
+  CategoryListDTO,
+  ProductListDTO,
+  ProductDetailDTO,
+  CartDTO,
+  SearchSuggestionDTO,
+} from '@wellness/contracts';
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -16,11 +20,15 @@ export type PaginatedData<T> = {
   nextCursor?: string | null;
 };
 
-export type CategoryResponse = ApiResponse<CategoryDTO>;
-export type CategoryListResponse = ApiResponse<CategoryDTO[]>;
+export type CategoryResponse = ApiResponse<CategoryDetailDTO>;
+export type CategoryListResponse = ApiResponse<CategoryListDTO[]>;
 export type ProductResponse = ApiResponse<ProductDetailDTO>;
 export type ProductListResponse = ApiResponse<PaginatedData<ProductListDTO>>;
 
-export function getResponseBody<T = unknown>(res: Response): ApiResponse<T> {
-  return res.body as ApiResponse<T>;
+export type CartResponse = ApiResponse<CartDTO>;
+export type SearchResponse = { products: ProductListDTO[]; categories: CategoryListDTO[] };
+export type SearchSuggestionResponse = { suggestions: SearchSuggestionDTO[] };
+
+export function getResponseBody<T>(res: { body: T }): T {
+  return res.body;
 }

@@ -1,7 +1,18 @@
 import { randomUUID } from 'crypto';
 import { webcrypto } from 'node:crypto';
 
-import { db, user, role, userRole, categories, products, session, sql } from '@wellness/db';
+import {
+  db,
+  user,
+  role,
+  userRole,
+  categories,
+  products,
+  productVariants,
+  productImages,
+  session,
+  sql,
+} from '@wellness/db';
 
 export type FactoryUser = typeof user.$inferSelect;
 export type FactoryProduct = typeof products.$inferSelect;
@@ -125,6 +136,45 @@ export const factories = {
       .returning();
     if (!newProduct) throw new Error('Failed to create product');
     return newProduct;
+  },
+
+  async createVariant(productId: string, overrides?: Partial<typeof productVariants.$inferInsert>) {
+    const id = overrides?.id || randomUUID();
+    const [newVariant] = await db
+      .insert(productVariants)
+      .values({
+        id,
+        productId,
+        name: overrides?.name || 'Test Variant',
+        sku: overrides?.sku || `SKU-${id}`,
+        price: overrides?.price || '9.99',
+        isActive: overrides?.isActive ?? true,
+        sortOrder: overrides?.sortOrder || 0,
+        ...overrides,
+      })
+      .returning();
+    if (!newVariant) throw new Error('Failed to create variant');
+    return newVariant;
+  },
+
+  async createProductImage(
+    productId: string,
+    overrides?: Partial<typeof productImages.$inferInsert>,
+  ) {
+    const id = overrides?.id || randomUUID();
+    const [newImage] = await db
+      .insert(productImages)
+      .values({
+        id,
+        productId,
+        url: overrides?.url || `http://example.com/img-${id}.png`,
+        isPrimary: overrides?.isPrimary ?? false,
+        sortOrder: overrides?.sortOrder || 0,
+        ...overrides,
+      })
+      .returning();
+    if (!newImage) throw new Error('Failed to create image');
+    return newImage;
   },
 
   async createSession(userId: string) {

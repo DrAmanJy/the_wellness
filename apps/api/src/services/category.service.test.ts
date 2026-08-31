@@ -28,8 +28,12 @@ describe('CategoryService', () => {
       expect(category).toBeDefined();
       expect(category.name).toBe('Health');
       expect(category.slug).toBe('health');
-      expect(category.createdBy).toBe(adminId);
       expect(category.isActive).toBe(true);
+
+      const dbCat = await db.query.categories.findFirst({
+        where: (categories, { eq }) => eq(categories.id, category.id),
+      });
+      expect(dbCat?.createdBy).toBe(adminId);
     });
 
     it('rejects concurrent duplicate slug creations', async () => {
@@ -178,8 +182,12 @@ describe('CategoryService', () => {
       });
       await categoryService.deleteCategory(child.id);
 
-      const deletedParent = await categoryService.deleteCategory(parent.id);
-      expect(deletedParent.deletedAt).toBeInstanceOf(Date);
+      const _deletedParent = await categoryService.deleteCategory(parent.id);
+
+      const dbParent = await db.query.categories.findFirst({
+        where: (categories, { eq }) => eq(categories.id, parent.id),
+      });
+      expect(dbParent?.deletedAt).toBeInstanceOf(Date);
     });
 
     it('blocks deletion if category is linked to products', async () => {
@@ -197,9 +205,12 @@ describe('CategoryService', () => {
 
     it('successfully soft-deletes empty category', async () => {
       const cat = await factories.createCategory();
-      const deleted = await categoryService.deleteCategory(cat.id);
+      const _deleted = await categoryService.deleteCategory(cat.id);
 
-      expect(deleted.deletedAt).toBeInstanceOf(Date);
+      const dbCat = await db.query.categories.findFirst({
+        where: (categories, { eq }) => eq(categories.id, cat.id),
+      });
+      expect(dbCat?.deletedAt).toBeInstanceOf(Date);
     });
 
     it('throws NotFoundError for deleting non-existent category', async () => {

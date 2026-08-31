@@ -13,9 +13,11 @@ import { requestId } from './lib/request-id';
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/not-found.middleware';
 import { globalRateLimiter } from './middleware/rate-limit.middleware';
+import cartRoutes from './routes/cart.routes';
 import categoryRoutes from './routes/category.routes';
 import healthRoutes from './routes/health.routes';
 import productRoutes from './routes/product.routes';
+import { searchRoutes } from './routes/search.routes';
 
 export const app = express();
 
@@ -50,6 +52,8 @@ app.use('/api/auth', (req, res, next) => {
 app.use('/health', healthRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/cart', cartRoutes);
 
 // Error Handling
 app.use(notFoundHandler);

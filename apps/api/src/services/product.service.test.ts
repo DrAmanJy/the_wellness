@@ -181,8 +181,10 @@ describe('ProductService', () => {
 
     it('deletes product successfully', async () => {
       const p = await factories.createProduct();
-      const deleted = await productService.deleteProduct(p.id);
-      expect(deleted.deletedAt).toBeInstanceOf(Date);
+      await productService.deleteProduct(p.id);
+
+      const [deleted] = await db.select().from(products).where(eq(products.id, p.id));
+      expect(deleted?.deletedAt).toBeInstanceOf(Date);
     });
 
     it('throws NotFoundError when deleting non-existent product', async () => {

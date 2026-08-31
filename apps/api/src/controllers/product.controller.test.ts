@@ -3,8 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { app } from '../app';
 import { factories } from '../test/factories';
-import { ProductListResponse, ProductResponse } from '../test/test-utils';
-import {} from '@wellness/contracts';
+import { getResponseBody, ProductListResponse, ProductResponse } from '../test/test-utils';
 
 describe('Product API Controllers', () => {
   let adminToken: string;
@@ -37,16 +36,17 @@ describe('Product API Controllers', () => {
       const res = await request(app).get('/api/products');
 
       expect(res.status).toBe(200);
-      expect((res.body as ProductResponse).success).toBe(true);
+      const bodyList = getResponseBody<ProductListResponse>(res);
+      expect(bodyList.success).toBe(true);
 
       // Ensure only active product is returned
-      const slugs = (res.body as ProductListResponse).data.items.map((p) => p.slug);
+      const slugs = bodyList.data.items.map((p) => p.slug);
       expect(slugs).toContain('active-prod');
       expect(slugs).not.toContain('draft-prod');
 
       // Validate pagination shape
-      expect((res.body as ProductResponse).data).toHaveProperty('nextCursor');
-      expect((res.body as ProductResponse).data).toHaveProperty('hasMore');
+      expect(bodyList.data).toHaveProperty('nextCursor');
+      expect(bodyList.data).toHaveProperty('hasMore');
     });
 
     it('handles limit and invalid limit queries correctly', async () => {
@@ -134,8 +134,9 @@ describe('Product API Controllers', () => {
       const res = await request(app).get('/api/products/find-me');
 
       expect(res.status).toBe(200);
-      expect((res.body as ProductResponse).success).toBe(true);
-      expect((res.body as ProductResponse).data.slug).toBe('find-me');
+      const body = getResponseBody<ProductResponse>(res);
+      expect(body.success).toBe(true);
+      expect(body.data.slug).toBe('find-me');
     });
 
     it('returns 404 for draft/archived/deleted products', async () => {
@@ -198,8 +199,9 @@ describe('Product API Controllers', () => {
         .send(validPayload);
 
       expect(res.status).toBe(201);
-      expect((res.body as ProductResponse).success).toBe(true);
-      expect((res.body as ProductResponse).data.slug).toBe('new-admin-product');
+      const body = getResponseBody<ProductResponse>(res);
+      expect(body.success).toBe(true);
+      expect(body.data.slug).toBe('new-admin-product');
     });
 
     it('returns 409 for duplicate slug', async () => {
@@ -222,8 +224,9 @@ describe('Product API Controllers', () => {
           .send({ name: 'New' });
 
         expect(res.status).toBe(200);
-        expect((res.body as ProductResponse).success).toBe(true);
-        expect((res.body as ProductResponse).data.name).toBe('New');
+        const body = getResponseBody<ProductResponse>(res);
+        expect(body.success).toBe(true);
+        expect(body.data.name).toBe('New');
       });
 
       it('rejects unauthenticated requests for update', async () => {
@@ -249,7 +252,8 @@ describe('Product API Controllers', () => {
           .set('Cookie', [`better-auth.session_token=${adminToken}`]);
 
         expect(res.status).toBe(200);
-        expect((res.body as ProductResponse).success).toBe(true);
+        const body = getResponseBody<ProductResponse>(res);
+        expect(body.success).toBe(true);
       });
 
       it('rejects unauthenticated requests for delete', async () => {
@@ -277,7 +281,8 @@ describe('Product API Controllers', () => {
           .send({ categoryIds: [c.id], primaryCategoryId: c.id });
 
         expect(res.status).toBe(200);
-        expect((res.body as ProductResponse).success).toBe(true);
+        const body = getResponseBody<ProductResponse>(res);
+        expect(body.success).toBe(true);
       });
 
       it('returns 409 if primary is not in assigned list', async () => {

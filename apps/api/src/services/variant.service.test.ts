@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
+import { db, productVariants, eq } from '@wellness/db';
 import { NotFoundError } from '@wellness/utils';
 
 import { productService } from './product.service';
@@ -143,9 +144,13 @@ describe('ProductService - Variants', () => {
         price: '19.99',
       });
 
-      const deleted = await productService.deleteVariant(product.id, variant.id);
+      const _deleted = await productService.deleteVariant(product.id, variant.id);
 
-      expect(deleted.deletedAt).not.toBeNull();
+      // Verify soft deletion in DB
+      const dbVariant = await db.query.productVariants.findFirst({
+        where: eq(productVariants.id, variant.id),
+      });
+      expect(dbVariant?.deletedAt).not.toBeNull();
 
       // Ensure it doesn't show up in product fetch
       const fetched = await productService.getProductBySlug(product.slug);
