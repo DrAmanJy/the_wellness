@@ -51,8 +51,8 @@ export const cartItems = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (_table) => {
-    return [];
+  (table) => {
+    return [uniqueIndex('cart_items_cart_id_variant_id_idx').on(table.cartId, table.variantId)];
   },
 );
 

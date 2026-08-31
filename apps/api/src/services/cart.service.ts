@@ -8,6 +8,7 @@ import {
   eq,
   and,
   isNull,
+  sql,
 } from '@wellness/db';
 import { NotFoundError, ConflictError, BadRequestError } from '@wellness/utils';
 
@@ -42,18 +43,30 @@ export class CartService {
     return cartData;
   }
 
-  async getCart(userId: string) {
-    let [cart] = await db
-      .select()
+  private async ensureActiveCart(
+    dbOrTx: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0],
+    userId: string,
+  ) {
+    await dbOrTx
+      .insert(carts)
+      .values({ userId, status: 'active' })
+      .onConflictDoNothing({
+        target: carts.userId,
+        where: eq(carts.status, 'active'),
+      });
+
+    const [cart] = await dbOrTx
+      .select({ id: carts.id })
       .from(carts)
       .where(and(eq(carts.userId, userId), eq(carts.status, 'active')))
       .limit(1);
 
-    if (!cart) {
-      const [newCart] = await db.insert(carts).values({ userId, status: 'active' }).returning();
-      if (!newCart) throw new Error('Failed to create cart');
-      cart = newCart;
-    }
+    if (!cart) throw new Error('Failed to create or retrieve cart');
+    return cart;
+  }
+
+  async getCart(userId: string) {
+    const cart = await this.ensureActiveCart(db, userId);
 
     const cartData = await this.getCartData(cart.id);
     if (!cartData) throw new Error('Cart not found after creation');
@@ -65,20 +78,7 @@ export class CartService {
 
     return db.transaction(async (tx) => {
       // 1. Get or create cart
-      let [cart] = await tx
-        .select({ id: carts.id })
-        .from(carts)
-        .where(and(eq(carts.userId, userId), eq(carts.status, 'active')))
-        .limit(1);
-
-      if (!cart) {
-        const [newCart] = await tx
-          .insert(carts)
-          .values({ userId, status: 'active' })
-          .returning({ id: carts.id });
-        if (!newCart) throw new Error('Failed to create cart');
-        cart = newCart;
-      }
+      const cart = await this.ensureActiveCart(tx, userId);
 
       // 2. Validate variant and product
       const variantData = await tx.query.productVariants.findFirst({
@@ -99,39 +99,35 @@ export class CartService {
         throw new ConflictError('Parent product is not publicly purchasable');
       }
 
-      // 3. Check inventory (Optional but recommended to prevent bad UX)
-      // Decision: We only check if there is ANY inventory available at all to prevent adding out-of-stock items,
-      // but we do NOT reserve the inventory until checkout to prevent cart-hoarding.
+      // 3. Upsert cart item with atomic increment
+      const [upsertedItem] = await tx
+        .insert(cartItems)
+        .values({
+          cartId: cart.id,
+          variantId,
+          quantity,
+        })
+        .onConflictDoUpdate({
+          target: [cartItems.cartId, cartItems.variantId],
+          set: {
+            quantity: sql`${cartItems.quantity} + ${quantity}`,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({ quantity: cartItems.quantity });
+
+      if (!upsertedItem) {
+        throw new Error('Failed to upsert cart item');
+      }
+
+      // 4. Check inventory against the resulting quantity
       const [inv] = await tx
         .select({ availableQty: inventory.availableQty })
         .from(inventory)
         .where(eq(inventory.variantId, variantId));
 
-      if (!inv || inv.availableQty < quantity) {
+      if (!inv || inv.availableQty < upsertedItem.quantity) {
         throw new ConflictError('Insufficient inventory');
-      }
-
-      // 4. Add or increment item
-      const [existingItem] = await tx
-        .select({ id: cartItems.id, quantity: cartItems.quantity })
-        .from(cartItems)
-        .where(and(eq(cartItems.cartId, cart.id), eq(cartItems.variantId, variantId)))
-        .limit(1);
-
-      if (existingItem) {
-        await tx
-          .update(cartItems)
-          .set({
-            quantity: existingItem.quantity + quantity,
-            updatedAt: new Date(),
-          })
-          .where(eq(cartItems.id, existingItem.id));
-      } else {
-        await tx.insert(cartItems).values({
-          cartId: cart.id,
-          variantId,
-          quantity,
-        });
       }
 
       // Update cart timestamp
@@ -152,12 +148,39 @@ export class CartService {
       if (!cart) throw new NotFoundError('Active cart not found');
 
       const [item] = await tx
-        .select({ id: cartItems.id })
+        .select({ id: cartItems.id, variantId: cartItems.variantId })
         .from(cartItems)
         .where(and(eq(cartItems.id, itemId), eq(cartItems.cartId, cart.id)))
         .limit(1);
 
       if (!item) throw new NotFoundError('Item not found in cart');
+
+      const variantData = await tx.query.productVariants.findFirst({
+        where: and(eq(productVariants.id, item.variantId), isNull(productVariants.deletedAt)),
+        with: {
+          product: true,
+        },
+      });
+
+      if (!variantData) throw new NotFoundError('Variant not found');
+      if (!variantData.isActive) throw new ConflictError('Variant is not purchasable');
+
+      const productData = variantData.product;
+      if (productData.deletedAt !== null) {
+        throw new NotFoundError('Parent product not found or deleted');
+      }
+      if (productData.status !== 'active') {
+        throw new ConflictError('Parent product is not publicly purchasable');
+      }
+
+      const [inv] = await tx
+        .select({ availableQty: inventory.availableQty })
+        .from(inventory)
+        .where(eq(inventory.variantId, item.variantId));
+
+      if (!inv || inv.availableQty < quantity) {
+        throw new ConflictError('Insufficient inventory');
+      }
 
       await tx
         .update(cartItems)

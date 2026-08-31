@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
 CREATE TYPE "public"."inventory_transaction_type" AS ENUM('purchase', 'sale', 'reservation', 'release', 'return', 'adjustment');--> statement-breakpoint
 CREATE TABLE "inventory" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
