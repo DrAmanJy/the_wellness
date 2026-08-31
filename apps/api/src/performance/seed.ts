@@ -87,7 +87,7 @@ async function seed() {
   );
 
   for (let i = benchmarkProductCount; i < NUM_PRODUCTS; i += BATCH_SIZE) {
-    const batch = [];
+    const batch: (typeof products.$inferInsert)[] = [];
     const size = Math.min(BATCH_SIZE, NUM_PRODUCTS - i);
 
     for (let j = 0; j < size; j++) {
@@ -106,47 +106,53 @@ async function seed() {
     }
 
     console.log(`Inserting products ${String(i)} to ${String(i + size - 1)}...`);
-    const insertedProducts = await db.insert(products).values(batch).returning({ id: products.id });
 
-    const catLinks = [];
-    const variants = [];
-    const images = [];
+    await db.transaction(async (tx) => {
+      const insertedProducts = await tx
+        .insert(products)
+        .values(batch)
+        .returning({ id: products.id });
 
-    for (let k = 0; k < insertedProducts.length; k++) {
-      const p = insertedProducts[k];
-      const pIdx = i + k;
+      const catLinks = [];
+      const variants = [];
+      const images = [];
 
-      // 2 Categories per product
-      catLinks.push({ productId: p ? p.id : '', categoryId: catIds[pIdx % catIds.length] || '' });
-      catLinks.push({
-        productId: p ? p.id : '',
-        categoryId: catIds[(pIdx + 1) % catIds.length] || '',
-      });
+      for (let k = 0; k < insertedProducts.length; k++) {
+        const p = insertedProducts[k];
+        const pIdx = i + k;
 
-      // 2 Variants per product
-      for (let v = 0; v < NUM_VARIANTS_PER_PRODUCT; v++) {
-        variants.push({
+        // 2 Categories per product
+        catLinks.push({ productId: p ? p.id : '', categoryId: catIds[pIdx % catIds.length] || '' });
+        catLinks.push({
           productId: p ? p.id : '',
-          name: `Variant ${String(v)}`,
-          sku: `BENCH-${String(pIdx)}-${String(v)}`,
-          price: (10 + (pIdx % 100) + v).toString(),
+          categoryId: catIds[(pIdx + 1) % catIds.length] || '',
         });
+
+        // 2 Variants per product
+        for (let v = 0; v < NUM_VARIANTS_PER_PRODUCT; v++) {
+          variants.push({
+            productId: p ? p.id : '',
+            name: `Variant ${String(v)}`,
+            sku: `BENCH-${String(pIdx)}-${String(v)}`,
+            price: (10 + (pIdx % 100) + v).toString(),
+          });
+        }
+
+        // 3 Images per product
+        for (let img = 0; img < NUM_IMAGES_PER_PRODUCT; img++) {
+          images.push({
+            productId: p ? p.id : '',
+            url: `https://example.com/bench-${String(pIdx)}-${String(img)}.jpg`,
+            isPrimary: img === 0,
+            sortOrder: img,
+          });
+        }
       }
 
-      // 3 Images per product
-      for (let img = 0; img < NUM_IMAGES_PER_PRODUCT; img++) {
-        images.push({
-          productId: p ? p.id : '',
-          url: `https://example.com/bench-${String(pIdx)}-${String(img)}.jpg`,
-          isPrimary: img === 0,
-          sortOrder: img,
-        });
-      }
-    }
-
-    await db.insert(productCategories).values(catLinks);
-    await db.insert(productVariants).values(variants);
-    await db.insert(productImages).values(images);
+      await tx.insert(productCategories).values(catLinks);
+      await tx.insert(productVariants).values(variants);
+      await tx.insert(productImages).values(images);
+    });
   }
 
   console.log('Seeding completed.');

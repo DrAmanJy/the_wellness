@@ -36,11 +36,10 @@ describe('Product API Controllers', () => {
       const res = await request(app).get('/api/products');
 
       expect(res.status).toBe(200);
-      const body = getResponseBody<ProductResponse>(res);
-      expect(body.success).toBe(true);
+      const bodyList = getResponseBody<ProductListResponse>(res);
+      expect(bodyList.success).toBe(true);
 
       // Ensure only active product is returned
-      const bodyList = getResponseBody<ProductListResponse>(res);
       const slugs = bodyList.data.items.map((p) => p.slug);
       expect(slugs).toContain('active-prod');
       expect(slugs).not.toContain('draft-prod');

@@ -56,6 +56,48 @@ describe('Search API Controllers', () => {
         ].sort(),
       );
     });
+
+    it('excludes inactive and soft-deleted products', async () => {
+      // 1. Create an active product
+      const activeProduct = await factories.createProduct({
+        name: 'Visible Search Product',
+        status: 'active',
+      });
+      await factories.createVariant(activeProduct.id);
+
+      // 2. Create a draft product
+      const draftProduct = await factories.createProduct({
+        name: 'Hidden Draft Search Product',
+        status: 'draft',
+      });
+      await factories.createVariant(draftProduct.id);
+
+      // 3. Create a soft-deleted product
+      const deletedProduct = await factories.createProduct({
+        name: 'Hidden Deleted Search Product',
+        status: 'active',
+      });
+      await factories.createVariant(deletedProduct.id);
+
+      const { products, eq } = await import('@wellness/db');
+      await db
+        .update(products)
+        .set({ deletedAt: new Date() })
+        .where(eq(products.id, deletedProduct.id));
+
+      // 4. Hit the search API
+      const res = await request(app).get('/api/search').query({ q: 'Search Product' });
+
+      expect(res.status).toBe(200);
+      const body = getResponseBody<SearchResponse>(res);
+
+      expect(body.products).toBeInstanceOf(Array);
+
+      const returnedNames = body.products.map((p) => p.name);
+      expect(returnedNames).toContain('Visible Search Product');
+      expect(returnedNames).not.toContain('Hidden Draft Search Product');
+      expect(returnedNames).not.toContain('Hidden Deleted Search Product');
+    });
   });
   describe('GET /api/search/suggestions', () => {
     it('returns exact fields according to SearchSuggestionDTO contract (M32)', async () => {
@@ -78,6 +120,50 @@ describe('Search API Controllers', () => {
 
       // Assert exact keys to prevent leaking internal DB fields
       expect(Object.keys(suggestion).sort()).toEqual(['id', 'label', 'slug', 'type'].sort());
+    });
+
+    it('excludes inactive and soft-deleted products from suggestions', async () => {
+      // 1. Create an active product
+      const activeProduct = await factories.createProduct({
+        name: 'Visible Suggestion Product',
+        status: 'active',
+      });
+      await factories.createVariant(activeProduct.id);
+
+      // 2. Create a draft product
+      const draftProduct = await factories.createProduct({
+        name: 'Hidden Draft Suggestion Product',
+        status: 'draft',
+      });
+      await factories.createVariant(draftProduct.id);
+
+      // 3. Create a soft-deleted product
+      const deletedProduct = await factories.createProduct({
+        name: 'Hidden Deleted Suggestion Product',
+        status: 'active',
+      });
+      await factories.createVariant(deletedProduct.id);
+
+      const { products, eq } = await import('@wellness/db');
+      await db
+        .update(products)
+        .set({ deletedAt: new Date() })
+        .where(eq(products.id, deletedProduct.id));
+
+      // 4. Hit the suggestions API
+      const res = await request(app)
+        .get('/api/search/suggestions')
+        .query({ q: 'Suggestion Product' });
+
+      expect(res.status).toBe(200);
+      const body = getResponseBody<SearchSuggestionResponse>(res);
+
+      expect(body.suggestions).toBeInstanceOf(Array);
+
+      const returnedLabels = body.suggestions.map((s) => s.label);
+      expect(returnedLabels).toContain('Visible Suggestion Product');
+      expect(returnedLabels).not.toContain('Hidden Draft Suggestion Product');
+      expect(returnedLabels).not.toContain('Hidden Deleted Suggestion Product');
     });
   });
 });

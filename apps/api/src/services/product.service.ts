@@ -431,7 +431,14 @@ export class ProductService {
         await tx
           .update(productImages)
           .set({ isPrimary: false })
-          .where(eq(productImages.productId, productId));
+          .where(
+            and(
+              eq(productImages.productId, productId),
+              data.variantId
+                ? eq(productImages.variantId, data.variantId)
+                : isNull(productImages.variantId),
+            ),
+          );
       }
 
       const [image] = await tx
@@ -465,10 +472,18 @@ export class ProductService {
 
       // If setting as primary, unset other primaries for this product
       if (data.isPrimary) {
+        const targetVariantId = data.variantId !== undefined ? data.variantId : existing.variantId;
         await tx
           .update(productImages)
           .set({ isPrimary: false })
-          .where(eq(productImages.productId, productId));
+          .where(
+            and(
+              eq(productImages.productId, productId),
+              targetVariantId
+                ? eq(productImages.variantId, targetVariantId)
+                : isNull(productImages.variantId),
+            ),
+          );
       }
 
       const [image] = await tx

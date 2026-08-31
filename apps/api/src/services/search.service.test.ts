@@ -82,9 +82,29 @@ describe('SearchService', () => {
         deletedAt: new Date(),
       });
 
+      await factories.createCategory({
+        name: 'Inactive Category',
+        slug: 'inactive-category',
+        isActive: false,
+      });
+      const deletedCategory = await factories.createCategory({
+        name: 'Deleted Category',
+        slug: 'deleted-category',
+        isActive: true,
+      });
+      const { categories, eq } = await import('@wellness/db');
+      await db
+        .update(categories)
+        .set({ deletedAt: new Date() })
+        .where(eq(categories.id, deletedCategory.id));
+
       const res = await searchService.searchCatalog('Product');
       expect(res.products.find((p) => p.name === 'Draft Product')).toBeUndefined();
       expect(res.products.find((p) => p.name === 'Deleted Product')).toBeUndefined();
+
+      const resCat = await searchService.searchCatalog('Category');
+      expect(resCat.categories.find((c) => c.name === 'Inactive Category')).toBeUndefined();
+      expect(resCat.categories.find((c) => c.name === 'Deleted Category')).toBeUndefined();
     });
   });
 

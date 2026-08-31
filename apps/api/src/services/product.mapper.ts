@@ -30,23 +30,24 @@ export function toProductMutationDTO(product: typeof products.$inferSelect): Pro
   };
 }
 
-type ProductListInput = Partial<typeof products.$inferSelect> & {
-  primaryImage?: string | null;
-  startingPrice?: number | null;
-  compareAtPrice?: number | null;
-};
+type ProductListInput = Pick<typeof products.$inferSelect, 'id' | 'name' | 'slug' | 'isFeatured'> &
+  Partial<typeof products.$inferSelect> & {
+    primaryImage?: string | null;
+    startingPrice?: number | null;
+    compareAtPrice?: number | null;
+  };
 
 export function toProductListDTO(product: ProductListInput): ProductListDTO {
   return {
-    id: product.id as string,
-    name: product.name as string,
-    slug: product.slug as string,
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
     shortDescription: product.shortDescription ?? null,
     brand: product.brand ?? null,
     primaryImage: product.primaryImage ?? null,
     startingPrice: product.startingPrice ?? null,
     compareAtPrice: product.compareAtPrice ?? null,
-    isFeatured: product.isFeatured as boolean,
+    isFeatured: product.isFeatured,
   };
 }
 
