@@ -24,6 +24,9 @@ ALTER TABLE "product_variants" DROP CONSTRAINT "product_variants_sku_unique";-->
 DROP INDEX "product_images_primary_unique_idx";--> statement-breakpoint
 ALTER TABLE "inventory" ADD CONSTRAINT "inventory_variant_id_product_variants_id_fk" FOREIGN KEY ("variant_id") REFERENCES "public"."product_variants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "inventory_transactions" ADD CONSTRAINT "inventory_transactions_variant_id_product_variants_id_fk" FOREIGN KEY ("variant_id") REFERENCES "public"."product_variants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "inventory_transactions" ADD CONSTRAINT "inventory_transactions_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "inventory_transactions_order_id_idx" ON "inventory_transactions" USING btree ("order_id");--> statement-breakpoint
+CREATE INDEX "inventory_transactions_variant_id_idx" ON "inventory_transactions" USING btree ("variant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "inventory_variant_unique_idx" ON "inventory" USING btree ("variant_id");--> statement-breakpoint
 CREATE INDEX "categories_name_trgm_idx" ON "categories" USING gin (("name"::text) gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "categories_slug_trgm_idx" ON "categories" USING gin (("slug"::text) gin_trgm_ops);--> statement-breakpoint

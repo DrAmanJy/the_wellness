@@ -55,14 +55,9 @@ describe('Inventory Database Constraints', () => {
 
     if (!variant) throw new Error('variant undefined');
 
-    try {
-      await db
-        .insert(inventory)
-        .values({ variantId: variant.id, availableQty: -5, reservedQty: 0 });
-      expect.fail('Should have thrown check constraint error');
-    } catch (e: unknown) {
-      expect(e).toBeDefined();
-    }
+    await expect(
+      db.insert(inventory).values({ variantId: variant.id, availableQty: -5, reservedQty: 0 }),
+    ).rejects.toThrow();
   });
 
   it('negative reservedQty rejected', async () => {
@@ -79,14 +74,9 @@ describe('Inventory Database Constraints', () => {
 
     if (!variant) throw new Error('variant undefined');
 
-    try {
-      await db
-        .insert(inventory)
-        .values({ variantId: variant.id, availableQty: 10, reservedQty: -1 });
-      expect.fail('Should have thrown check constraint error');
-    } catch (e: unknown) {
-      expect(e).toBeDefined();
-    }
+    await expect(
+      db.insert(inventory).values({ variantId: variant.id, availableQty: 10, reservedQty: -1 }),
+    ).rejects.toThrow();
   });
 
   it('duplicate variant inventory rejected', async () => {
@@ -109,22 +99,16 @@ describe('Inventory Database Constraints', () => {
       reservedQty: 0,
     });
 
-    try {
-      await db.insert(inventory).values({ variantId: variant.id, availableQty: 5, reservedQty: 0 });
-      expect.fail('Should have thrown unique constraint error');
-    } catch (e: unknown) {
-      expect(e).toBeDefined();
-    }
+    await expect(
+      db.insert(inventory).values({ variantId: variant.id, availableQty: 5, reservedQty: 0 }),
+    ).rejects.toThrow();
   });
 
   it('invalid variant FK rejected', async () => {
     const invalidId = '00000000-0000-0000-0000-000000000000';
-    try {
-      await db.insert(inventory).values({ variantId: invalidId, availableQty: 10, reservedQty: 0 });
-      expect.fail('Should have thrown foreign key constraint error');
-    } catch (e: unknown) {
-      expect(e).toBeDefined();
-    }
+    await expect(
+      db.insert(inventory).values({ variantId: invalidId, availableQty: 10, reservedQty: 0 }),
+    ).rejects.toThrow();
   });
 
   it('transaction records correctly reference variants', async () => {

@@ -8,6 +8,7 @@ import {
   index,
   text,
   pgEnum,
+  check,
 } from 'drizzle-orm/pg-core';
 
 import { user } from './auth';
@@ -52,7 +53,10 @@ export const cartItems = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => {
-    return [uniqueIndex('cart_items_cart_id_variant_id_idx').on(table.cartId, table.variantId)];
+    return [
+      uniqueIndex('unique_variant_per_cart_idx').on(table.cartId, table.variantId),
+      check('cart_items_quantity_positive', sql`${table.quantity} > 0`),
+    ];
   },
 );
 
