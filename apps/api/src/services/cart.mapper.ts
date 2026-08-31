@@ -22,14 +22,18 @@ type CartRawInput = {
 };
 
 export function toCartDTO(cartRaw: CartRawInput): CartDTO {
-  let subtotal = 0;
+  let subtotalCents = 0;
   let itemCount = 0;
 
   const items = (cartRaw.items || []).map((item): CartItemDTO => {
     itemCount += item.quantity;
-    const priceNum = parseFloat(item.variant.price) || 0;
-    const itemSubtotal = priceNum * item.quantity;
-    subtotal += itemSubtotal;
+    const parsedPrice = parseFloat(item.variant.price);
+    if (isNaN(parsedPrice)) {
+      throw new Error(`Invalid price for variant ${item.variantId}`);
+    }
+    const priceCents = Math.round(parsedPrice * 100);
+    const itemSubtotalCents = priceCents * item.quantity;
+    subtotalCents += itemSubtotalCents;
 
     return {
       id: item.id,
@@ -37,7 +41,7 @@ export function toCartDTO(cartRaw: CartRawInput): CartDTO {
       quantity: item.quantity,
       sku: item.variant.sku,
       price: item.variant.price,
-      subtotal: itemSubtotal.toFixed(2),
+      subtotal: (itemSubtotalCents / 100).toFixed(2),
       product: {
         id: item.variant.product.id,
         name: item.variant.product.name,
@@ -52,7 +56,7 @@ export function toCartDTO(cartRaw: CartRawInput): CartDTO {
     status: cartRaw.status as 'active' | 'converted' | 'abandoned',
     items,
     itemCount,
-    subtotal: subtotal.toFixed(2),
+    subtotal: (subtotalCents / 100).toFixed(2),
     updatedAt: cartRaw.updatedAt.toISOString(),
   };
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { asyncHandler } from '@wellness/utils';
 
-import { requireAuth } from '../middleware/auth.middleware';
+import { requireAuth, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { cartService } from '../services/cart.service';
 
 const router = Router();
@@ -20,9 +20,9 @@ const UpdateItemSchema = z.object({
 router.get(
   '/',
   requireAuth,
-  asyncHandler(async (req, res) => {
-    const userId = req.auth?.userId as string;
-    const cart = await cartService.getCart(userId);
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.auth.userId;
+    const cart = await cartService.getCartReadonly(userId);
     res.json({ success: true, data: cart });
   }),
 );
@@ -30,9 +30,9 @@ router.get(
 router.post(
   '/items',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
     const data = AddItemSchema.parse(req.body);
-    const userId = req.auth?.userId as string;
+    const userId = req.auth.userId;
     await cartService.addItem(userId, data.variantId, data.quantity);
 
     // Return the updated cart
@@ -44,11 +44,11 @@ router.post(
 router.patch(
   '/items/:id',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
     const itemId = z.string().uuid().parse(req.params.id);
     const data = UpdateItemSchema.parse(req.body);
 
-    const userId = req.auth?.userId as string;
+    const userId = req.auth.userId;
     await cartService.updateItemQuantity(userId, itemId, data.quantity);
 
     const cart = await cartService.getCart(userId);
@@ -59,9 +59,9 @@ router.patch(
 router.delete(
   '/items/:id',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
     const itemId = z.string().uuid().parse(req.params.id);
-    const userId = req.auth?.userId as string;
+    const userId = req.auth.userId;
     await cartService.removeItem(userId, itemId);
 
     const cart = await cartService.getCart(userId);
@@ -72,8 +72,8 @@ router.delete(
 router.delete(
   '/',
   requireAuth,
-  asyncHandler(async (req, res) => {
-    const userId = req.auth?.userId as string;
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.auth.userId;
     await cartService.clearCart(userId);
 
     const cart = await cartService.getCart(userId);

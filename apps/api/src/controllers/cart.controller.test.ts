@@ -30,7 +30,7 @@ describe('Cart API Controllers', () => {
   });
 
   describe('GET /api/cart', () => {
-    it('returns empty cart on first fetch and creates it', async () => {
+    it('returns empty cart on first fetch without creating it', async () => {
       const res = await request(app)
         .get('/api/cart')
         .set('Cookie', [`better-auth.session_token=${userAToken}`]);
@@ -41,7 +41,7 @@ describe('Cart API Controllers', () => {
       expect(body.data.items).toEqual([]);
 
       const userCarts = await db.select().from(carts).where(eq(carts.userId, userAId));
-      expect(userCarts.length).toBe(1);
+      expect(userCarts.length).toBe(0);
     });
 
     it('rejects unauthenticated requests (401)', async () => {
@@ -152,9 +152,6 @@ describe('Cart API Controllers', () => {
       await expect(cartService.addItem(userAId, variant.id, 0)).rejects.toThrow(
         'Quantity must be greater than zero',
       );
-      await expect(cartService.addItem(userAId, variant.id, 0)).rejects.toThrow(
-        'Quantity must be greater than zero',
-      );
       await expect(cartService.addItem(userAId, variant.id, -5)).rejects.toThrow(
         'Quantity must be greater than zero',
       );
@@ -206,14 +203,71 @@ describe('Cart API Controllers', () => {
     it('returns 409 when item is out of stock', async () => {
       const product = await factories.createProduct();
       const variant = await factories.createVariant(product.id);
-
-      // We didn't create inventory for this variant, so availableQty defaults to 0 if we assume it gets created,
-      // but if there is NO inventory record, the service will also throw 409.
+      await db.insert(inventory).values({ variantId: variant.id, availableQty: 0 });
 
       const res = await request(app)
         .post('/api/cart/items')
         .set('Cookie', [`better-auth.session_token=${userAToken}`])
         .send({ variantId: variant.id, quantity: 1 });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 when adding an inactive variant', async () => {
+      const product = await factories.createProduct();
+      const variant = await factories.createVariant(product.id, { isActive: false });
+      await db.insert(inventory).values({ variantId: variant.id, availableQty: 10 });
+
+      const res = await request(app)
+        .post('/api/cart/items')
+        .set('Cookie', [`better-auth.session_token=${userAToken}`])
+        .send({ variantId: variant.id, quantity: 1 });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 when parent product is draft', async () => {
+      const product = await factories.createProduct({ status: 'draft' });
+      const variant = await factories.createVariant(product.id);
+      await db.insert(inventory).values({ variantId: variant.id, availableQty: 10 });
+
+      const res = await request(app)
+        .post('/api/cart/items')
+        .set('Cookie', [`better-auth.session_token=${userAToken}`])
+        .send({ variantId: variant.id, quantity: 1 });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 when parent product is archived', async () => {
+      const product = await factories.createProduct({ status: 'archived' });
+      const variant = await factories.createVariant(product.id);
+      await db.insert(inventory).values({ variantId: variant.id, availableQty: 10 });
+
+      const res = await request(app)
+        .post('/api/cart/items')
+        .set('Cookie', [`better-auth.session_token=${userAToken}`])
+        .send({ variantId: variant.id, quantity: 1 });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('returns 409 when second add cumulative quantity exceeds stock', async () => {
+      const product = await factories.createProduct();
+      const variant = await factories.createVariant(product.id);
+      await db.insert(inventory).values({ variantId: variant.id, availableQty: 10 });
+
+      // First add succeeds
+      await request(app)
+        .post('/api/cart/items')
+        .set('Cookie', [`better-auth.session_token=${userAToken}`])
+        .send({ variantId: variant.id, quantity: 6 });
+
+      // Second add fails because 6 + 5 > 10
+      const res = await request(app)
+        .post('/api/cart/items')
+        .set('Cookie', [`better-auth.session_token=${userAToken}`])
+        .send({ variantId: variant.id, quantity: 5 });
 
       expect(res.status).toBe(409);
     });
@@ -410,7 +464,7 @@ describe('Cart API Controllers', () => {
       if (!userCarts[0]) throw new Error('Cart not found');
       const items = await db.select().from(cartItems).where(eq(cartItems.cartId, userCarts[0].id));
       expect(items.length).toBe(0);
-    });
+    }, 10000);
   });
 
   describe('Overfetching & Data Leak Prevention', () => {

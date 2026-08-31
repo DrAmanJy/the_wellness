@@ -23,6 +23,7 @@ export class CartService {
       where: eq(carts.id, cartId),
       with: {
         items: {
+          orderBy: (itemsTable, { asc }) => [asc(itemsTable.id)],
           with: {
             variant: {
               with: {
@@ -70,6 +71,28 @@ export class CartService {
 
     const cartData = await this.getCartData(cart.id);
     if (!cartData) throw new Error('Cart not found after creation');
+    return toCartDTO(cartData);
+  }
+
+  async getCartReadonly(userId: string) {
+    const [cart] = await db
+      .select({ id: carts.id })
+      .from(carts)
+      .where(and(eq(carts.userId, userId), eq(carts.status, 'active')))
+      .limit(1);
+
+    if (!cart) {
+      return {
+        id: '00000000-0000-0000-0000-000000000000',
+        status: 'active' as const,
+        items: [],
+        itemCount: 0,
+        subtotal: '0.00',
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    const cartData = await this.getCartData(cart.id);
+    if (!cartData) throw new Error('Cart not found');
     return toCartDTO(cartData);
   }
 
@@ -121,6 +144,8 @@ export class CartService {
       }
 
       // 4. Check inventory against the resulting quantity
+      // NOTE: This check is advisory since reservation is intentionally deferred.
+      // Authoritative inventory validation must be enforced during checkout instead.
       const [inv] = await tx
         .select({ availableQty: inventory.availableQty })
         .from(inventory)
@@ -220,7 +245,7 @@ export class CartService {
         .where(and(eq(carts.userId, userId), eq(carts.status, 'active')))
         .limit(1);
 
-      if (!cart) throw new NotFoundError('Active cart not found');
+      if (!cart) return; // Idempotent success if active cart does not exist
 
       await tx.delete(cartItems).where(eq(cartItems.cartId, cart.id));
 
