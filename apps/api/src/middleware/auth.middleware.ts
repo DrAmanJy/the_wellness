@@ -17,6 +17,10 @@ declare module 'express' {
   }
 }
 
+export interface AuthenticatedRequest extends Request {
+  auth: AuthContext;
+}
+
 export const requireAuth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   let session;
   try {
