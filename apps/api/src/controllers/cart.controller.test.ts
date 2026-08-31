@@ -106,7 +106,7 @@ describe('Cart API Controllers', () => {
       const product = await factories.createProduct();
       const variant = await factories.createVariant(product.id);
 
-      await db.insert(inventory).values({ variantId: variant.id, availableQty: 10 }, 15000);
+      await db.insert(inventory).values({ variantId: variant.id, availableQty: 10 });
 
       await request(app)
         .post('/api/cart/items')
@@ -390,7 +390,7 @@ describe('Cart API Controllers', () => {
       await request(app)
         .post('/api/cart/items')
         .set('Cookie', [`better-auth.session_token=${userAToken}`])
-        .send({ variantId: variant1.id, quantity: 1 }, 15000);
+        .send({ variantId: variant1.id, quantity: 1 });
 
       await request(app)
         .post('/api/cart/items')
