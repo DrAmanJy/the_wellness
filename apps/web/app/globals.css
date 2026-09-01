@@ -1,0 +1,79 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-wellness-navy: #0a192f;
+  --color-wellness-green: #2b7a78;
+  --color-wellness-light-green: #def2f1;
+  --color-wellness-charcoal: #17252a;
+  --color-wellness-white: #fafafa;
+
+  --color-wellness-gray-100: #f3f4f6;
+  --color-wellness-gray-200: #e5e7eb;
+  --color-wellness-gray-800: #1f2937;
+
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
+}
+
+@layer base {
+  body {
+    @apply bg-wellness-white text-wellness-charcoal antialiased selection:bg-wellness-green selection:text-white;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading tracking-tight;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.05)];
+  }
+
+  .glass-premium {
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 32px 0 rgba(10, 25, 47, 0.04);
+  }
+
+  .arched-frame {
+    border-radius: 200px 200px 32px 32px;
+  }
+
+  .glow-orb {
+    filter: blur(120px);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient-shift {
+  background-size: 200% 200% !important;
+  animation: gradientShift 8s ease infinite !important;
+}
+
+.container {
+  width: 100% !important;
+  max-width: 1280px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}

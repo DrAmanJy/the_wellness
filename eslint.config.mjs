@@ -72,6 +72,7 @@ export default tseslint.config(
       'eslint.config.mjs',
       'prettier.config.mjs',
       'lint-staged.config.mjs',
+      '**/postcss.config.mjs',
       '**/coverage/**',
       'apps/api/measure-payload.js',
     ],
