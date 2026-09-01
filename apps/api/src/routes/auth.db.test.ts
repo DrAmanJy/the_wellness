@@ -23,12 +23,13 @@ describe('Better Auth Database Adapter', () => {
       model: 'account',
       where: [
         { field: 'issuer', value: 'https://accounts.google.com' },
-        { field: 'accountId', value: '114255923654780919905' },
+        { field: 'accountId', value: `isolated-test-id-${Date.now().toString()}` },
       ],
     });
 
-    // We don't care if the account exists, we just care that the query executed successfully
-    // meaning the 'issuer' column exists and is properly mapped by Drizzle
+    // We don't care about the account itself, we just care that the query executed successfully
+    // meaning the 'issuer' column exists and is properly mapped by Drizzle.
+    // By using an isolated generated lookup value, we ensure success doesn't depend on shared DB state.
     expect(account).toBeNull();
   });
 });
