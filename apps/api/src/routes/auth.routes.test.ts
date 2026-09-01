@@ -1,12 +1,24 @@
+import type { Express } from 'express';
 import request from 'supertest';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
-import { app } from '../app';
+let app: Express;
 
 describe('Auth Routes Integration (Real Handler)', () => {
-  it('1. Auth handler reachability (should not return 404)', async () => {
+  beforeAll(async () => {
+    vi.stubEnv('GOOGLE_CLIENT_ID', 'test-client-id');
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', 'test-client-secret');
+    vi.stubEnv('CORS_ORIGIN', 'http://localhost:3000');
+    app = (await import('../app')).app;
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('1. Auth handler reachability (returns exact success status)', async () => {
     const okResponse = await request(app).get('/api/auth/ok').set('Host', 'localhost:5000');
-    expect(okResponse.status).not.toBe(404);
+    expect(okResponse.status).toBe(200);
   });
 
   it('2. Google provider is accepted', async () => {
@@ -35,22 +47,25 @@ describe('Auth Routes Integration (Real Handler)', () => {
       .set('Host', 'localhost:5000')
       .send({ provider: 'github', callbackURL: 'http://localhost:3000/home' });
 
-    // Better Auth returns 404 for unconfigured providers (the route doesn't exist)
-    expect(response.status).not.toBe(200);
+    // Better Auth returns 404 for unconfigured providers
+    expect(response.status).toBe(404);
   });
 
   it('4. Session endpoint remains reachable', async () => {
     const response = await request(app).get('/api/auth/get-session').set('Host', 'localhost:5000');
-    // For unauthenticated, it returns 401 or null
-    expect(response.status).not.toBe(404);
+    // Unauthenticated request returns 200 OK (with null session body)
+    expect(response.status).toBe(200);
   });
 
-  it('5. Existing API behavior works (JSON body parser still works for API routes)', async () => {
-    // The cart routes should still parse JSON bodies.
-    // We can test a route that requires JSON. Since we don't know the exact cart payload,
-    // we can just ensure that /health or some other route is unaffected.
-    const response = await request(app).get('/health');
+  it('5. Existing API behavior works (JSON body parser works for API routes)', async () => {
+    // Send a JSON body to the deterministic endpoint
+    const response = await request(app)
+      .post('/health/echo')
+      .set('Host', 'localhost:5000')
+      .send({ hello: 'world', nested: { data: 123 } });
+
+    // Assert 200 OK and verify the parsed JSON body is returned exactly
     expect(response.status).toBe(200);
-    expect((response.body as Record<string, unknown>).data).toHaveProperty('status', 'ok');
+    expect(response.body).toEqual({ body: { hello: 'world', nested: { data: 123 } } });
   });
 });

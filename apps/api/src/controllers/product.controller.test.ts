@@ -59,7 +59,7 @@ describe('Product API Controllers', () => {
             'startingPrice',
             'compareAtPrice',
             'isFeatured',
-          ].sort()
+          ].sort(),
         );
       }
 
@@ -150,7 +150,8 @@ describe('Product API Controllers', () => {
     it('returns a specific active product', async () => {
       const p = await factories.createProduct({ slug: 'find-me', status: 'active' });
       await factories.createVariant(p.id);
-      
+      await factories.createProductImage(p.id);
+
       const { db, productCategories } = await import('@wellness/db');
       const c = await factories.createCategory();
       await db.insert(productCategories).values({ productId: p.id, categoryId: c.id });
@@ -166,31 +167,70 @@ describe('Product API Controllers', () => {
       const productKeys = Object.keys(body.data).sort();
       expect(productKeys).toEqual(
         [
-          'id', 'name', 'slug', 'description', 'shortDescription', 'brand', 'status', 'isFeatured',
-          'categoryPrimaryId', 'tags', 'attributes', 'specifications', 'ingredients', 'benefits', 'seo',
-          'categories', 'variants', 'images', 'createdAt', 'updatedAt'
-        ].sort()
+          'id',
+          'name',
+          'slug',
+          'description',
+          'shortDescription',
+          'brand',
+          'status',
+          'isFeatured',
+          'categoryPrimaryId',
+          'tags',
+          'attributes',
+          'specifications',
+          'ingredients',
+          'benefits',
+          'seo',
+          'categories',
+          'variants',
+          'images',
+          'createdAt',
+          'updatedAt',
+        ].sort(),
       );
 
       const firstVariant = body.data.variants[0];
       if (firstVariant) {
         expect(Object.keys(firstVariant).sort()).toEqual(
-          ['id', 'productId', 'name', 'sku', 'price', 'compareAtPrice', 'currency', 'weight', 'length', 'width', 'height', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'].sort()
+          [
+            'id',
+            'productId',
+            'name',
+            'sku',
+            'price',
+            'compareAtPrice',
+            'currency',
+            'weight',
+            'length',
+            'width',
+            'height',
+            'isActive',
+            'sortOrder',
+            'createdAt',
+            'updatedAt',
+          ].sort(),
         );
       }
-      
+
       const firstImage = body.data.images[0];
-      if (firstImage) {
-        expect(Object.keys(firstImage).sort()).toEqual(
-          ['id', 'productId', 'variantId', 'url', 'altText', 'sortOrder', 'isPrimary', 'createdAt'].sort()
-        );
-      }
-      
+      if (!firstImage) throw new Error('Expected firstImage to be defined');
+      expect(Object.keys(firstImage).sort()).toEqual(
+        [
+          'id',
+          'productId',
+          'variantId',
+          'url',
+          'altText',
+          'sortOrder',
+          'isPrimary',
+          'createdAt',
+        ].sort(),
+      );
+
       const firstCategory = body.data.categories[0];
       if (firstCategory) {
-        expect(Object.keys(firstCategory).sort()).toEqual(
-          ['id', 'name', 'slug'].sort()
-        );
+        expect(Object.keys(firstCategory).sort()).toEqual(['id', 'name', 'slug'].sort());
       }
     });
 
@@ -262,10 +302,24 @@ describe('Product API Controllers', () => {
       const mutationKeys = Object.keys(body.data).sort();
       expect(mutationKeys).toEqual(
         [
-          'id', 'name', 'slug', 'description', 'shortDescription', 'brand', 'status', 'isFeatured',
-          'categoryPrimaryId', 'tags', 'attributes', 'specifications', 'ingredients', 'benefits', 'seo',
-          'createdAt', 'updatedAt'
-        ].sort()
+          'id',
+          'name',
+          'slug',
+          'description',
+          'shortDescription',
+          'brand',
+          'status',
+          'isFeatured',
+          'categoryPrimaryId',
+          'tags',
+          'attributes',
+          'specifications',
+          'ingredients',
+          'benefits',
+          'seo',
+          'createdAt',
+          'updatedAt',
+        ].sort(),
       );
     });
 
