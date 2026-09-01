@@ -7,6 +7,16 @@ import { db, role, userRole, eq } from '@wellness/db';
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
+  basePath: '/api/auth',
+  trustedOrigins: [
+    (function () {
+      if (!env.CORS_ORIGIN || env.CORS_ORIGIN === '*') {
+        throw new Error('CORS_ORIGIN must be a specific absolute origin, not a wildcard');
+      }
+      return env.CORS_ORIGIN;
+    })(),
+    ...(env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:4000'] : []),
+  ],
   database: drizzleAdapter(db, {
     provider: 'pg',
   }),

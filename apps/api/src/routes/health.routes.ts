@@ -45,4 +45,9 @@ router.get(
   }),
 );
 
+// Echo endpoint strictly for testing the JSON parser
+router.post('/echo', (req, res) => {
+  res.json({ body: req.body as unknown });
+});
+
 export default router;

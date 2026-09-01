@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 
 import { UnauthorizedError } from '@wellness/utils';
 import { CreateCategorySchema, UpdateCategorySchema } from '@wellness/validation';
@@ -18,7 +19,7 @@ export class CategoryController {
 
   async getCategoryBySlug(req: Request, res: Response, next: NextFunction) {
     try {
-      const slug = req.params.slug as string;
+      const slug = z.string().trim().min(1).parse(req.params.slug);
       const data = await categoryService.getCategoryBySlug(slug);
       res.json({ success: true, data });
     } catch (error) {
@@ -49,7 +50,7 @@ export class CategoryController {
         }
       }
       const category = await categoryService.updateCategory(
-        req.params.id as string,
+        z.string().uuid().parse(req.params.id),
         data,
         req.auth.userId,
       );
@@ -61,7 +62,7 @@ export class CategoryController {
 
   async deleteCategory(req: Request, res: Response, next: NextFunction) {
     try {
-      const category = await categoryService.deleteCategory(req.params.id as string);
+      const category = await categoryService.deleteCategory(z.string().uuid().parse(req.params.id));
       res.json({ success: true, data: category });
     } catch (error) {
       next(error);

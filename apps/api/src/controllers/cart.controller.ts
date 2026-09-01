@@ -2,20 +2,15 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { asyncHandler } from '@wellness/utils';
+import { AddItemSchema, UpdateItemSchema } from '@wellness/validation';
+
 
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { cartService } from '../services/cart.service';
 
 const router = Router();
 
-const AddItemSchema = z.object({
-  variantId: z.string().uuid(),
-  quantity: z.number().int().positive(),
-});
 
-const UpdateItemSchema = z.object({
-  quantity: z.number().int().positive(),
-});
 
 router.get(
   '/',
