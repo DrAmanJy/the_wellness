@@ -100,6 +100,25 @@ describe('Cart API Controllers', () => {
       expect(body.data.itemCount).toBe(2);
       expect(body.data.items[0]?.quantity).toBe(2);
       expect(body.data.items[0]?.variantId).toBe(variant.id);
+
+      // Exact-key assertion for CartDTO
+      const cartKeys = Object.keys(body.data).sort();
+      expect(cartKeys).toEqual([
+        'id', 'status', 'items', 'itemCount', 'subtotal', 'updatedAt'
+      ].sort());
+
+      const firstItem = body.data.items[0];
+      if (firstItem) {
+        const itemKeys = Object.keys(firstItem).sort();
+        expect(itemKeys).toEqual([
+          'id', 'variantId', 'quantity', 'sku', 'price', 'subtotal', 'product'
+        ].sort());
+        
+        const productKeys = Object.keys(firstItem.product).sort();
+        expect(productKeys).toEqual([
+          'id', 'name', 'slug', 'image'
+        ].sort());
+      }
     });
 
     it('increments quantity on duplicate variant addition', async () => {

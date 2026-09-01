@@ -44,6 +44,25 @@ describe('Product API Controllers', () => {
       expect(slugs).toContain('active-prod');
       expect(slugs).not.toContain('draft-prod');
 
+      // Exact-key assertion for ProductListDTO
+      const item = bodyList.data.items[0];
+      if (item) {
+        const itemKeys = Object.keys(item).sort();
+        expect(itemKeys).toEqual(
+          [
+            'id',
+            'name',
+            'slug',
+            'shortDescription',
+            'brand',
+            'primaryImage',
+            'startingPrice',
+            'compareAtPrice',
+            'isFeatured',
+          ].sort()
+        );
+      }
+
       // Validate pagination shape
       expect(bodyList.data).toHaveProperty('nextCursor');
       expect(bodyList.data).toHaveProperty('hasMore');
@@ -129,7 +148,12 @@ describe('Product API Controllers', () => {
 
   describe('GET /api/products/:slug', () => {
     it('returns a specific active product', async () => {
-      await factories.createProduct({ slug: 'find-me', status: 'active' });
+      const p = await factories.createProduct({ slug: 'find-me', status: 'active' });
+      await factories.createVariant(p.id);
+      
+      const { db, productCategories } = await import('@wellness/db');
+      const c = await factories.createCategory();
+      await db.insert(productCategories).values({ productId: p.id, categoryId: c.id });
 
       const res = await request(app).get('/api/products/find-me');
 
@@ -137,6 +161,37 @@ describe('Product API Controllers', () => {
       const body = getResponseBody<ProductResponse>(res);
       expect(body.success).toBe(true);
       expect(body.data.slug).toBe('find-me');
+
+      // Exact-key assertion for ProductDetailDTO
+      const productKeys = Object.keys(body.data).sort();
+      expect(productKeys).toEqual(
+        [
+          'id', 'name', 'slug', 'description', 'shortDescription', 'brand', 'status', 'isFeatured',
+          'categoryPrimaryId', 'tags', 'attributes', 'specifications', 'ingredients', 'benefits', 'seo',
+          'categories', 'variants', 'images', 'createdAt', 'updatedAt'
+        ].sort()
+      );
+
+      const firstVariant = body.data.variants[0];
+      if (firstVariant) {
+        expect(Object.keys(firstVariant).sort()).toEqual(
+          ['id', 'productId', 'name', 'sku', 'price', 'compareAtPrice', 'currency', 'weight', 'length', 'width', 'height', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'].sort()
+        );
+      }
+      
+      const firstImage = body.data.images[0];
+      if (firstImage) {
+        expect(Object.keys(firstImage).sort()).toEqual(
+          ['id', 'productId', 'variantId', 'url', 'altText', 'sortOrder', 'isPrimary', 'createdAt'].sort()
+        );
+      }
+      
+      const firstCategory = body.data.categories[0];
+      if (firstCategory) {
+        expect(Object.keys(firstCategory).sort()).toEqual(
+          ['id', 'name', 'slug'].sort()
+        );
+      }
     });
 
     it('returns 404 for draft/archived/deleted products', async () => {
@@ -202,6 +257,16 @@ describe('Product API Controllers', () => {
       const body = getResponseBody<ProductResponse>(res);
       expect(body.success).toBe(true);
       expect(body.data.slug).toBe('new-admin-product');
+
+      // Exact-key assertion for ProductMutationDTO
+      const mutationKeys = Object.keys(body.data).sort();
+      expect(mutationKeys).toEqual(
+        [
+          'id', 'name', 'slug', 'description', 'shortDescription', 'brand', 'status', 'isFeatured',
+          'categoryPrimaryId', 'tags', 'attributes', 'specifications', 'ingredients', 'benefits', 'seo',
+          'createdAt', 'updatedAt'
+        ].sort()
+      );
     });
 
     it('returns 409 for duplicate slug', async () => {

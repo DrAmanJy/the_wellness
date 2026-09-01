@@ -7,6 +7,8 @@ import { db, role, userRole, eq } from '@wellness/db';
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
+  basePath: '/api/auth',
+  trustedOrigins: ['http://localhost:3000', 'http://localhost:4000'],
   database: drizzleAdapter(db, {
     provider: 'pg',
   }),

@@ -68,6 +68,15 @@ describe('Category API Controllers', () => {
       expect(dto).not.toHaveProperty('updatedAt');
       expect(dto).toHaveProperty('id');
       expect(dto).toHaveProperty('slug');
+
+      // Exact-key assertion for CategoryListDTO
+      const item = bodyList.data[0];
+      if (item) {
+        const itemKeys = Object.keys(item).sort();
+        expect(itemKeys).toEqual([
+          'id', 'name', 'slug', 'imageUrl', 'parentId', 'isActive', 'sortOrder'
+        ].sort());
+      }
     });
   });
 
@@ -79,6 +88,12 @@ describe('Category API Controllers', () => {
       const body = getResponseBody<CategoryResponse>(res);
       expect(body.success).toBe(true);
       expect(body.data.name).toBe('Find Me');
+
+      // Exact-key assertion for CategoryDetailDTO
+      const categoryKeys = Object.keys(body.data).sort();
+      expect(categoryKeys).toEqual([
+        'id', 'name', 'slug', 'description', 'imageUrl', 'parentId', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'
+      ].sort());
     });
 
     it('returns 404 for non-existent category slug', async () => {
@@ -143,6 +158,12 @@ describe('Category API Controllers', () => {
       const body = getResponseBody<CategoryResponse>(res);
       expect(body.success).toBe(true);
       expect(body.data.slug).toBe('new-cat');
+
+      // Exact-key assertion for CategoryMutationDTO
+      const mutationKeys = Object.keys(body.data).sort();
+      expect(mutationKeys).toEqual([
+        'id', 'name', 'slug', 'description', 'imageUrl', 'parentId', 'isActive', 'sortOrder', 'createdAt', 'updatedAt'
+      ].sort());
     });
 
     it('returns 400 for bad payloads', async () => {

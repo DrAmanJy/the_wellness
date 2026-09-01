@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 
 import { UnauthorizedError } from '@wellness/utils';
 import {
@@ -57,7 +58,7 @@ export class ProductController {
 
   async getProductBySlug(req: Request, res: Response, next: NextFunction) {
     try {
-      const slug = req.params.slug as string;
+      const slug = z.string().trim().min(1).parse(req.params.slug);
       const data = await productService.getProductBySlug(slug);
       res.json({ success: true, data });
     } catch (error) {
@@ -98,7 +99,7 @@ export class ProductController {
       }
 
       const data = await productService.updateProduct(
-        req.params.id as string,
+        z.string().uuid().parse(req.params.id),
         updatePayload,
         req.auth.userId,
       );
@@ -110,7 +111,7 @@ export class ProductController {
 
   async deleteProduct(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await productService.deleteProduct(req.params.id as string);
+      const data = await productService.deleteProduct(z.string().uuid().parse(req.params.id));
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -122,7 +123,7 @@ export class ProductController {
       const validatedData = UpdateProductCategoriesSchema.parse(req.body);
       if (!req.auth?.userId) throw new UnauthorizedError();
       await productService.updateProductCategories(
-        req.params.id as string,
+        z.string().uuid().parse(req.params.id),
         validatedData.categoryIds,
         validatedData.primaryCategoryId || undefined,
         req.auth.userId,
