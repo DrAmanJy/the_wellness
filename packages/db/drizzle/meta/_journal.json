@@ -36,6 +36,13 @@
       "when": 1787812885750,
       "tag": "0004_silky_talos",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788242248171,
+      "tag": "0005_steady_ted_forrester",
+      "breakpoints": true
     }
   ]
 }
