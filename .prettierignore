@@ -1,5 +1,5 @@
-node_modules/
-dist/
-.turbo/
-coverage/
-pnpm-lock.yaml
+.next
+dist
+node_modules
+coverage
+.turbo
