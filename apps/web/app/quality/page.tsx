@@ -36,9 +36,10 @@ export default function QualityPage() {
           ease: 'power2.out',
         });
 
-        const progressBars = gsap.utils.toArray('.progress-fill');
-        progressBars.forEach((bar: any) => {
+        const progressBars = gsap.utils.toArray<HTMLElement>('.progress-fill');
+        progressBars.forEach((bar) => {
           const targetWidth = bar.getAttribute('data-width');
+          if (!targetWidth) return;
           gsap.to(bar, {
             scrollTrigger: {
               trigger: bar,

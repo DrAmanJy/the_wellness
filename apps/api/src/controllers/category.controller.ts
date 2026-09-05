@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
-import { UnauthorizedError } from '@wellness/utils';
 import { CreateCategorySchema, UpdateCategorySchema } from '@wellness/validation';
 
 import type { AuthContext } from '../middleware/auth.middleware';
@@ -19,7 +18,13 @@ export class CategoryController {
 
   async getCategoryBySlug(req: Request, res: Response, next: NextFunction) {
     try {
-      const slug = z.string().trim().min(1).parse(req.params.slug);
+      const slug = z
+        .string()
+        .trim()
+        .min(1, 'Slug cannot be empty')
+        .max(255, 'Slug too long')
+        .regex(/^[a-z0-9-]+$/, 'Invalid slug format')
+        .parse(req.params.slug);
       const data = await categoryService.getCategoryBySlug(slug);
       res.json({ success: true, data });
     } catch (error) {
@@ -30,8 +35,7 @@ export class CategoryController {
   async createCategory(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const data = CreateCategorySchema.parse(req.body);
-      if (!req.auth?.userId) throw new UnauthorizedError();
-      const category = await categoryService.createCategory(data, req.auth.userId);
+      const category = await categoryService.createCategory(data, req.auth?.userId);
       res.status(201).json({ success: true, data: category });
     } catch (error) {
       next(error);
@@ -41,19 +45,14 @@ export class CategoryController {
   async updateCategory(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const parsed = UpdateCategorySchema.parse(req.body);
-      if (!req.auth?.userId) throw new UnauthorizedError();
-      // Strip undefined-valued keys so exactOptionalPropertyTypes is satisfied
+      const id = z.string().uuid('Invalid category ID format').parse(req.params.id);
       const data: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(parsed)) {
         if (value !== undefined) {
           data[key] = value;
         }
       }
-      const category = await categoryService.updateCategory(
-        z.string().uuid().parse(req.params.id),
-        data,
-        req.auth.userId,
-      );
+      const category = await categoryService.updateCategory(id, data, req.auth?.userId);
       res.json({ success: true, data: category });
     } catch (error) {
       next(error);
@@ -62,7 +61,8 @@ export class CategoryController {
 
   async deleteCategory(req: Request, res: Response, next: NextFunction) {
     try {
-      const category = await categoryService.deleteCategory(z.string().uuid().parse(req.params.id));
+      const id = z.string().uuid('Invalid category ID format').parse(req.params.id);
+      const category = await categoryService.deleteCategory(id);
       res.json({ success: true, data: category });
     } catch (error) {
       next(error);

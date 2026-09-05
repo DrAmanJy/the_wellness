@@ -1,25 +1,39 @@
 'use client';
 
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Upload,
-  Lock,
-  ShieldCheck,
-  AlertCircle,
-  Package,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import Image from 'next/image';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Package, Lock } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
-import Script from 'next/script';
 import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+
+import AuthRequiredModal from './components/AuthRequiredModal';
+import OrderSummary from './components/OrderSummary';
+import PaymentStep from './components/PaymentStep';
+import ReviewStep from './components/ReviewStep';
+import ShippingStep from './components/ShippingStep';
+import StepIndicator from './components/StepIndicator';
+import {
+  orderShippingSchema,
+  OrderShippingFormData,
+  Step,
+  ShippingForm,
+  SavedAddress,
+  OrderRecord,
+  ApiOrderData,
+} from './types';
 
 import { useCart } from '@/context/CartContext';
 import { authClient } from '@/lib/auth-client';
 
-type Step = 'review' | 'shipping' | 'payment';
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => {
+      on: (event: string, callback: (res: { error?: unknown }) => void) => void;
+      open: () => void;
+    };
+  }
+}
 
 export default function OrderPage() {
   const { cartItems, cartSubtotal, hasRxItems, clearCart } = useCart();
@@ -28,32 +42,288 @@ export default function OrderPage() {
   const [rxFile, setRxFile] = useState<File | null>(null);
   const [rxFileName, setRxFileName] = useState<string>('');
   const [rxError, setRxError] = useState<string>('');
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
 
-  // Shipping Form State
-  const [shippingForm, setShippingForm] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    zipCode: '',
+  // Shipping Form State (react-hook-form)
+  const {
+    register: registerShipping,
+    handleSubmit: handleShippingSubmit,
+    setValue: setShippingValue,
+    watch: watchShipping,
+    reset: resetShipping,
+    formState: { errors: shippingErrors },
+  } = useForm<OrderShippingFormData>({
+    resolver: zodResolver(orderShippingSchema),
+    defaultValues: {
+      fullName: '',
+      email: '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      zipCode: '',
+    },
   });
 
-  // Pre-fill shipping form if user is logged in
+  const shippingForm = watchShipping();
+
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('new');
+  const [isAddingNewAddress, setIsAddingNewAddress] = useState<boolean>(false);
+
   useEffect(() => {
     if (session?.user) {
-      setShippingForm((prev) => ({
-        ...prev,
-        fullName: prev.fullName || session.user.name || '',
-        email: prev.email || session.user.email || '',
-      }));
+      setShippingValue('fullName', session.user.name || '');
+      setShippingValue('email', session.user.email || '');
     }
-  }, [session]);
-  const [shippingErrors, setShippingErrors] = useState<Record<string, string>>({});
+  }, [session, setShippingValue]);
+
+  // Fetch saved addresses from Customer API, Order History, or fallback
+  useEffect(() => {
+    const fetchSavedAddresses = async () => {
+      const addresses: SavedAddress[] = [];
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+      if (session?.user) {
+        // 1. Fetch from Customer Addresses API
+        try {
+          const reqHeaders: Record<string, string> = {};
+          if (session.session.token) {
+            reqHeaders['Authorization'] = `Bearer ${session.session.token}`;
+          }
+          const res = await fetch(`${backendUrl}/api/customer/addresses`, {
+            headers: reqHeaders,
+            credentials: 'include',
+          });
+          if (res.ok) {
+            const json = (await res.json()) as {
+              success?: boolean;
+              data?: Array<{
+                id: string;
+                fullName: string;
+                phone: string;
+                street: string;
+                city: string;
+                state: string;
+                pincode: string;
+              }>;
+            };
+            if (json.success && Array.isArray(json.data)) {
+              json.data.forEach((item, idx) => {
+                addresses.push({
+                  id: item.id,
+                  fullName: item.fullName || session.user.name || '',
+                  email: session.user.email || '',
+                  phone: item.phone || '',
+                  address: item.street || '',
+                  city: item.city || '',
+                  state: item.state || '',
+                  zipCode: item.pincode || '',
+                  isDefault: idx === 0,
+                });
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Error fetching customer saved addresses:', e);
+        }
+
+        // 2. Fetch from DB orders if no customer addresses found
+        if (addresses.length === 0) {
+          try {
+            const reqHeaders: Record<string, string> = {};
+            if (session.session.token) {
+              reqHeaders['Authorization'] = `Bearer ${session.session.token}`;
+            }
+            const oRes = await fetch(`${backendUrl}/api/orders`, {
+              headers: reqHeaders,
+              credentials: 'include',
+            });
+            if (oRes.ok) {
+              const oJson = (await oRes.json()) as {
+                success?: boolean;
+                data?: Array<{
+                  id?: string;
+                  address?: {
+                    street?: string;
+                    city?: string;
+                    state?: string;
+                    pincode?: string;
+                  };
+                }>;
+              };
+              if (oJson.success && Array.isArray(oJson.data)) {
+                const seenKeys = new Set<string>();
+                oJson.data.forEach((ord, idx) => {
+                  if (ord.address && ord.address.street) {
+                    const parts = ord.address.street.split(' | ');
+                    let fullName = session.user.name || '';
+                    let phone = '';
+                    let street = ord.address.street;
+                    if (parts.length >= 3) {
+                      fullName = parts[0];
+                      phone = parts[1];
+                      street = parts.slice(2).join(' | ');
+                    }
+                    const key = `${fullName}-${street}-${ord.address.pincode || ''}`;
+                    if (!seenKeys.has(key)) {
+                      seenKeys.add(key);
+                      addresses.push({
+                        id: ord.id || `ord-addr-${String(idx)}`,
+                        fullName,
+                        email: session.user.email || '',
+                        phone,
+                        address: street,
+                        city: ord.address.city || '',
+                        state: ord.address.state || '',
+                        zipCode: ord.address.pincode || '',
+                        isDefault: addresses.length === 0,
+                      });
+                    }
+                  }
+                });
+              }
+            }
+          } catch (oErr) {
+            console.warn('Error extracting addresses from order history:', oErr);
+          }
+        }
+      }
+
+      setSavedAddresses(addresses);
+      if (addresses.length > 0) {
+        const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
+        setSelectedAddressId(defaultAddr.id);
+        resetShipping({
+          fullName: defaultAddr.fullName,
+          email: defaultAddr.email || session?.user.email || '',
+          phone: defaultAddr.phone,
+          address: defaultAddr.address,
+          city: defaultAddr.city,
+          state: defaultAddr.state,
+          zipCode: defaultAddr.zipCode,
+        });
+        setIsAddingNewAddress(false);
+      } else {
+        setSelectedAddressId('new');
+        setIsAddingNewAddress(true);
+      }
+    };
+
+    void fetchSavedAddresses();
+  }, [session, resetShipping]);
+
+  const handleSelectSavedAddress = (addr: SavedAddress) => {
+    setSelectedAddressId(addr.id);
+    setIsAddingNewAddress(false);
+    resetShipping({
+      fullName: addr.fullName,
+      email: addr.email || session?.user.email || '',
+      phone: addr.phone,
+      address: addr.address,
+      city: addr.city,
+      state: addr.state,
+      zipCode: addr.zipCode,
+    });
+  };
+
+  const handleAddNewAddressClick = () => {
+    setSelectedAddressId('new');
+    setIsAddingNewAddress(true);
+    resetShipping({
+      fullName: session?.user.name || '',
+      email: session?.user.email || '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      zipCode: '',
+    });
+  };
+
+  const [isFetchingPincode, setIsFetchingPincode] = useState(false);
+  const [pincodeSuccessMsg, setPincodeSuccessMsg] = useState('');
+  const [pincodeErrorMsg, setPincodeErrorMsg] = useState('');
+
+  const fetchLocationByPincode = async (code: string) => {
+    const cleanCode = code.trim();
+    if (cleanCode.length !== 6 || !/^\d{6}$/.test(cleanCode)) {
+      if (cleanCode.length < 6) {
+        setPincodeSuccessMsg('');
+        setPincodeErrorMsg('');
+      }
+      return;
+    }
+
+    setIsFetchingPincode(true);
+    setPincodeSuccessMsg('');
+    setPincodeErrorMsg('');
+
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${cleanCode}`);
+      if (res.ok) {
+        const data = (await res.json()) as Array<{
+          Status?: string;
+          PostOffice?: Array<{
+            District?: string;
+            Block?: string;
+            Circle?: string;
+            Name?: string;
+            State?: string;
+          }>;
+        }>;
+
+        if (Array.isArray(data) && data[0]?.Status === 'Success' && data[0]?.PostOffice?.length) {
+          const postOffice = data[0].PostOffice[0];
+          const cityFound =
+            postOffice.District || postOffice.Block || postOffice.Circle || postOffice.Name || '';
+          const stateFound = postOffice.State || '';
+
+          setShippingValue('city', cityFound, { shouldValidate: true });
+          setShippingValue('state', stateFound, { shouldValidate: true });
+
+          setPincodeSuccessMsg(`Location found: ${cityFound}, ${stateFound}`);
+          setIsFetchingPincode(false);
+          return;
+        }
+      }
+
+      // Fallback API: Zippopotam
+      const resZip = await fetch(`https://api.zippopotam.us/in/${cleanCode}`);
+      if (resZip.ok) {
+        const dataZip = (await resZip.json()) as {
+          places?: Array<{
+            'place name'?: string;
+            state?: string;
+          }>;
+        };
+        if (dataZip.places && dataZip.places.length > 0) {
+          const place = dataZip.places[0];
+          const cityFound = place['place name'] || '';
+          const stateFound = place['state'] || '';
+
+          setShippingValue('city', cityFound, { shouldValidate: true });
+          setShippingValue('state', stateFound, { shouldValidate: true });
+
+          setPincodeSuccessMsg(`Location found: ${cityFound}, ${stateFound}`);
+          setIsFetchingPincode(false);
+          return;
+        }
+      }
+
+      setPincodeErrorMsg('PIN code location not found. Please type City & State manually.');
+    } catch (err) {
+      console.error('Pincode fetch error:', err);
+      setPincodeErrorMsg(
+        'Could not fetch location automatically. Please enter City & State manually.',
+      );
+    } finally {
+      setIsFetchingPincode(false);
+    }
+  };
 
   // Razorpay Payment State
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderId, setOrderId] = useState('');
   const [paymentError, setPaymentError] = useState<string>('');
 
   // Calculate pricing values
@@ -63,8 +333,8 @@ export default function OrderPage() {
 
   // Handle Prescription Upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+    const file = e.target.files?.[0];
+    if (file) {
       if (file.size > 5 * 1024 * 1024) {
         setRxError('File size exceeds the 5MB limit.');
         return;
@@ -81,139 +351,209 @@ export default function OrderPage() {
     setRxError('');
   };
 
-  // Validate Shipping form
-  const validateShipping = () => {
-    const errors: Record<string, string> = {};
-    if (!shippingForm.fullName.trim()) errors.fullName = 'Full Name is required';
-    if (!shippingForm.email.trim()) {
-      errors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(shippingForm.email)) {
-      errors.email = 'Invalid email address';
-    }
-    if (!shippingForm.phone.trim()) errors.phone = 'Phone number is required';
-    if (!shippingForm.address.trim()) errors.address = 'Street address is required';
-    if (!shippingForm.city.trim()) errors.city = 'City is required';
-    if (!shippingForm.zipCode.trim()) errors.zipCode = 'ZIP Code is required';
-
-    setShippingErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  // Helper to save order and address details to user history in localStorage
-  const saveOrderToHistory = (orderData: any) => {
+  const submitOrderToApi = async (paymentDetails: {
+    transactionId?: string;
+    razorpayOrderId?: string;
+    razorpayPaymentId?: string;
+    razorpaySignature?: string;
+    provider?: string;
+  }): Promise<ApiOrderData | null> => {
     try {
-      // Save last order
-      localStorage.setItem('last_order', JSON.stringify(orderData));
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const storedCartId =
+        typeof window !== 'undefined' ? localStorage.getItem('wellness_cart_id') : null;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (storedCartId) {
+        headers['x-cart-id'] = storedCartId;
+      }
+      if (session?.session.token) {
+        headers['Authorization'] = `Bearer ${session.session.token}`;
+      }
 
-      // Save to order history list
-      const historyJson = localStorage.getItem('orders_history');
-      const history = historyJson ? JSON.parse(historyJson) : [];
-      history.unshift(orderData); // Add new order at the beginning
-      localStorage.setItem('orders_history', JSON.stringify(history));
+      const body = {
+        shippingAddress: {
+          fullName: shippingForm.fullName,
+          phone: shippingForm.phone,
+          email: shippingForm.email,
+          street: shippingForm.address,
+          city: shippingForm.city,
+          state: shippingForm.state,
+          pincode: shippingForm.zipCode,
+          country: 'India',
+        },
+        payment: {
+          provider: paymentDetails.provider || 'razorpay',
+          transactionId: paymentDetails.transactionId || paymentDetails.razorpayPaymentId,
+          razorpayOrderId: paymentDetails.razorpayOrderId,
+          razorpayPaymentId: paymentDetails.razorpayPaymentId,
+          razorpaySignature: paymentDetails.razorpaySignature,
+          amount: totalCost,
+          paymentMethod: 'online',
+        },
+        items: cartItems.map((item) => ({
+          productId: item.product.id,
+          productName: item.product.name,
+          unitPrice: item.product.price,
+          quantity: item.quantity,
+        })),
+        subtotal: cartSubtotal,
+        shippingAmount: shippingCost,
+        taxAmount: taxCost,
+        totalAmount: totalCost,
+      };
 
-      // Save shipping address
-      const addressesJson = localStorage.getItem('saved_addresses');
-      const addresses = addressesJson ? JSON.parse(addressesJson) : [];
+      const res = await fetch(`${backendUrl}/api/orders`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
 
-      const isExist = addresses.some(
-        (addr: any) =>
-          addr.address.toLowerCase() === orderData.shippingForm.address.toLowerCase() &&
-          addr.zipCode === orderData.shippingForm.zipCode,
-      );
-      if (!isExist) {
-        addresses.push({
-          id: `addr_${Math.random().toString(36).substring(2, 9)}`,
-          ...orderData.shippingForm,
-          isDefault: addresses.length === 0,
-        });
-        localStorage.setItem('saved_addresses', JSON.stringify(addresses));
+      if (res.ok) {
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: ApiOrderData;
+        };
+        if (json.success && json.data) {
+          return json.data;
+        }
+      } else {
+        const errJson = (await res.json().catch(() => null)) as {
+          message?: string;
+          error?: { message?: string };
+        } | null;
+        const errMsg =
+          errJson?.error?.message || errJson?.message || 'Failed to submit order to API.';
+        throw new Error(errMsg);
       }
     } catch (e) {
-      console.error('Failed to save order/address to history:', e);
+      console.error('Error submitting order to API database:', e);
+      throw e;
     }
+    return null;
   };
 
   // Razorpay payment handler
   const handlePayment = async () => {
+    if (!session?.user) {
+      setPaymentError('Authentication required. Please log in to complete your purchase.');
+      setShowAuthModal(true);
+      return;
+    }
+
     setIsSubmitting(true);
     setPaymentError('');
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const payHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session.session.token) {
+        payHeaders['Authorization'] = `Bearer ${session.session.token}`;
+      }
+
       const response = await fetch(`${backendUrl}/api/payments/razorpay`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: payHeaders,
         body: JSON.stringify({ amount: totalCost }),
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to initiate payment. Please try again.');
+        throw new Error('Failed to initiate payment with Razorpay. Please try again.');
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as {
+        id?: string;
+        amount?: number;
+        currency?: string;
+        keyId?: string;
+      };
 
-      if (data.isMock) {
-        // Automatically simulate payment success without showing any simulator page!
-        const generatedPayId = `pay_mock_${Math.random().toString(36).substring(2, 16).toUpperCase()}`;
-        const mockOrderId = data.id || `WILL-MOCK-${Math.floor(100000 + Math.random() * 900000)}`;
-        const orderData = {
-          orderId: mockOrderId,
-          paymentId: generatedPayId,
-          items: cartItems,
-          subtotal: cartSubtotal,
-          shipping: shippingCost,
-          tax: taxCost,
-          total: totalCost,
-          shippingForm: shippingForm,
-          date: new Date().toISOString(),
-          isMock: true,
-          status: 'pending',
-          hasRxItems: hasRxItems,
-          rxFileName: hasRxItems ? rxFileName || 'medical_prescription_certified.pdf' : null,
-        };
+      const keyId =
+        data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TTtlm8FsLRmEuv';
 
-        setTimeout(() => {
-          saveOrderToHistory(orderData);
-          clearCart();
-          window.location.href = `/order/success`;
-        }, 1500);
-        return;
-      }
-
-      const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-      if (!keyId) {
-        throw new Error('Razorpay Client Key ID is missing in environment.');
+      if (!window.Razorpay) {
+        throw new Error('Razorpay SDK script is still loading. Please try clicking pay again.');
       }
 
       const options = {
         key: keyId,
-        amount: data.amount,
-        currency: data.currency,
+        amount: data.amount || Math.round(totalCost * 100),
+        currency: data.currency || 'INR',
         name: 'The Wellness Platform',
-        description: 'Premium Healthcare Purchase',
+        description: 'Therapeutic Product Purchase',
         order_id: data.id,
-        handler: function (paymentResponse: any) {
-          const orderData = {
-            orderId: data.id,
-            paymentId: paymentResponse.razorpay_payment_id,
-            items: cartItems,
-            subtotal: cartSubtotal,
-            shipping: shippingCost,
-            tax: taxCost,
-            total: totalCost,
-            shippingForm: shippingForm,
-            date: new Date().toISOString(),
-            isMock: false,
-            status: 'pending',
-            hasRxItems: hasRxItems,
-            rxFileName: hasRxItems ? rxFileName || 'medical_prescription_certified.pdf' : null,
-          };
-          saveOrderToHistory(orderData);
+        handler: async function (paymentResponse: {
+          razorpay_payment_id: string;
+          razorpay_order_id?: string;
+          razorpay_signature?: string;
+        }) {
+          setIsSubmitting(true);
+          try {
+            const razorpayOrderId = paymentResponse.razorpay_order_id || data.id || '';
+            const razorpayPaymentId = paymentResponse.razorpay_payment_id;
+            const razorpaySignature = paymentResponse.razorpay_signature || '';
 
-          clearCart();
-          window.location.href = `/order/success`;
+            // Verify payment signature
+            if (razorpaySignature) {
+              try {
+                const verifyHeaders: Record<string, string> = {
+                  'Content-Type': 'application/json',
+                };
+                if (session.session.token) {
+                  verifyHeaders['Authorization'] = `Bearer ${session.session.token}`;
+                }
+                await fetch(`${backendUrl}/api/payments/verify`, {
+                  method: 'POST',
+                  headers: verifyHeaders,
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    razorpayOrderId,
+                    razorpayPaymentId,
+                    razorpaySignature,
+                  }),
+                });
+              } catch (vErr) {
+                console.warn('Razorpay signature verification warning:', vErr);
+              }
+            }
+
+            // Save order to API database & deduct stock
+            const dbOrder = await submitOrderToApi({
+              razorpayPaymentId,
+              razorpayOrderId,
+              razorpaySignature,
+              provider: 'razorpay',
+            });
+
+            const finalOrderId = dbOrder?.id || razorpayOrderId || `ORD-${String(Date.now())}`;
+
+            const _orderData: OrderRecord = {
+              orderId: finalOrderId,
+              paymentId: razorpayPaymentId,
+              items: cartItems,
+              subtotal: cartSubtotal,
+              shipping: shippingCost,
+              tax: taxCost,
+              total: totalCost,
+              shippingForm,
+              date: new Date().toISOString(),
+              status: 'confirmed',
+              hasRxItems,
+              rxFileName: hasRxItems ? rxFileName || 'medical_prescription_certified.pdf' : null,
+            };
+
+            clearCart();
+            const targetUrl = dbOrder?.id ? `/order/success?id=${dbOrder.id}` : '/order/success';
+            window.location.href = targetUrl;
+          } catch (err) {
+            console.error('Razorpay payment handler error:', err);
+            setPaymentError('Failed to process completed order. Please contact support.');
+            setIsSubmitting(false);
+          }
         },
         prefill: {
           name: shippingForm.fullName,
@@ -221,35 +561,41 @@ export default function OrderPage() {
           contact: shippingForm.phone,
         },
         notes: {
-          address: `${shippingForm.address}, ${shippingForm.city} - ${shippingForm.zipCode}`,
+          address: `${shippingForm.address}, ${shippingForm.city}${shippingForm.state ? `, ${shippingForm.state}` : ''} - ${shippingForm.zipCode}`,
         },
         theme: {
-          color: '#2B7A78', // brand color (wellness green)
+          color: '#2B7A78',
         },
         modal: {
           ondismiss: function () {
-            window.location.href = `/products`;
+            setIsSubmitting(false);
           },
         },
       };
 
-      const rzp = new (window as any).Razorpay(options);
-
-      rzp.on('payment.failed', function (errResponse: any) {
-        console.error('Payment failed:', errResponse.error);
-        window.location.href = `/products`;
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (errResponse) {
+        console.error('Razorpay payment failed:', errResponse.error);
+        const errObj = errResponse.error as { description?: string } | undefined;
+        setPaymentError(errObj?.description || 'Payment failed on Razorpay.');
+        setIsSubmitting(false);
       });
-
       rzp.open();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Payment initialization error:', err);
-      setPaymentError(err.message || 'Payment initialization failed. Please retry.');
+      const errMsg =
+        err instanceof Error ? err.message : 'Payment initialization failed. Please retry.';
+      setPaymentError(errMsg);
       setIsSubmitting(false);
     }
   };
 
   // Step Navigations
   const handleReviewSubmit = () => {
+    if (!session?.user) {
+      setShowAuthModal(true);
+      return;
+    }
     if (hasRxItems && !rxFile) {
       setRxError('Please upload a valid prescription before proceeding.');
       return;
@@ -257,11 +603,42 @@ export default function OrderPage() {
     setCurrentStep('shipping');
   };
 
-  const handleShippingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (validateShipping()) {
-      setCurrentStep('payment');
+  const saveNewAddressToBackend = async (addr: ShippingForm) => {
+    if (!session?.user) return;
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const reqHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session.session.token) {
+        reqHeaders['Authorization'] = `Bearer ${session.session.token}`;
+      }
+      await fetch(`${backendUrl}/api/customer/addresses`, {
+        method: 'POST',
+        headers: reqHeaders,
+        credentials: 'include',
+        body: JSON.stringify({
+          fullName: addr.fullName,
+          phone: addr.phone,
+          street: addr.address,
+          city: addr.city,
+          state: addr.state,
+          pincode: addr.zipCode,
+          country: 'India',
+        }),
+      });
+    } catch (e) {
+      console.warn('Failed to persist new address to customer DB:', e);
     }
+  };
+
+  const onShippingFormSubmit = (data: OrderShippingFormData) => {
+    if (!session?.user) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (isAddingNewAddress || selectedAddressId === 'new') {
+      void saveNewAddressToBackend(data);
+    }
+    setCurrentStep('payment');
   };
 
   // Render Page Content based on Step
@@ -293,592 +670,116 @@ export default function OrderPage() {
   return (
     <div className="pt-12 pb-24 min-h-screen bg-wellness-white">
       <div className="container mx-auto px-6 md:px-12 max-w-6xl">
-        {/* Step Indicator */}
-        {true && (
-          <div className="mb-12">
-            <div className="flex items-center justify-between max-w-xl mx-auto">
-              {/* Step 1 */}
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${
-                    currentStep === 'review'
-                      ? 'bg-wellness-green text-white shadow-md'
-                      : 'bg-wellness-navy text-white'
-                  }`}
-                >
-                  1
-                </div>
-                <span className="text-[11px] font-bold text-wellness-navy uppercase tracking-wider mt-2">
-                  Review & Rx
-                </span>
-              </div>
-              <div className="flex-grow h-0.5 mx-4 bg-wellness-gray-200"></div>
+        <StepIndicator currentStep={currentStep} />
 
-              {/* Step 2 */}
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${
-                    currentStep === 'shipping'
-                      ? 'bg-wellness-green text-white shadow-md'
-                      : currentStep === 'payment'
-                        ? 'bg-wellness-navy text-white'
-                        : 'bg-wellness-gray-200 text-wellness-charcoal/40'
-                  }`}
-                >
-                  2
-                </div>
-                <span className="text-[11px] font-bold text-wellness-navy uppercase tracking-wider mt-2">
-                  Shipping
-                </span>
+        {/* Auth Required Banner for Unauthenticated Users */}
+        {!session?.user && (
+          <div className="mb-8 p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-600 shrink-0">
+                <Lock size={20} />
               </div>
-              <div className="flex-grow h-0.5 mx-4 bg-wellness-gray-200"></div>
-
-              {/* Step 3 */}
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${
-                    currentStep === 'payment'
-                      ? 'bg-wellness-green text-white shadow-md'
-                      : 'bg-wellness-gray-200 text-wellness-charcoal/40'
-                  }`}
-                >
-                  3
-                </div>
-                <span className="text-[11px] font-bold text-wellness-navy uppercase tracking-wider mt-2">
-                  Payment
-                </span>
+              <div>
+                <h4 className="font-bold text-sm text-wellness-navy">Account Login Required</h4>
+                <p className="text-xs text-wellness-charcoal/70">
+                  Please log in to your Wellness account before completing checkout and placing an
+                  order.
+                </p>
               </div>
             </div>
+            <Link
+              href="/account?redirect=/order"
+              className="shrink-0 bg-wellness-navy hover:bg-wellness-green text-white text-xs font-bold py-2.5 px-5 rounded-xl transition-colors shadow-sm"
+            >
+              Sign In / Register
+            </Link>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-          {/* Main Form Area */}
+          {/* Main Step Form Area */}
           <div className="lg:col-span-7">
             <AnimatePresence mode="wait">
-              {/* STEP 1: REVIEW & PRESCRIPTION */}
               {currentStep === 'review' && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-8"
-                >
-                  <div>
-                    <h2 className="text-3xl font-heading font-bold text-wellness-navy mb-2">
-                      Review Your Order
-                    </h2>
-                    <p className="text-wellness-charcoal/70">
-                      Verify your cart contents and provide prescription details if required.
-                    </p>
-                  </div>
-
-                  {/* Prescription Upload Zone */}
-                  {hasRxItems ? (
-                    <div className="bg-white border border-wellness-gray-200 rounded-2xl p-6 md:p-8 space-y-6">
-                      <div className="flex items-start gap-4 p-4 rounded-xl bg-amber-50 border-l-4 border-amber-500">
-                        <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20} />
-                        <div>
-                          <h3 className="font-heading font-bold text-amber-800 text-sm uppercase tracking-wider">
-                            Prescription (Rx) Required
-                          </h3>
-                          <p className="text-xs text-amber-700 mt-1 leading-relaxed font-medium">
-                            Your order contains regulated prescription drugs. Please upload a
-                            scanned copy of your doctor's official prescription (PDF, JPEG, or PNG)
-                            to continue.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="border-2 border-dashed border-wellness-gray-200 rounded-xl p-8 text-center flex flex-col items-center justify-center hover:border-wellness-green transition-colors relative bg-wellness-gray-50/50">
-                        <input
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg"
-                          onChange={handleFileChange}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-sm text-wellness-green mb-4">
-                          <Upload size={24} />
-                        </div>
-                        <h4 className="font-heading font-bold text-wellness-navy text-base mb-1">
-                          Drag & Drop or Click to Upload
-                        </h4>
-                        <p className="text-xs text-wellness-charcoal/50 mb-4">
-                          Supports PDF, PNG, JPG (Max 5MB)
-                        </p>
-
-                        {rxFileName && (
-                          <div className="flex items-center gap-2 px-4 py-2 bg-wellness-green/10 text-wellness-green font-semibold rounded-lg text-sm">
-                            <CheckCircle2 size={16} />
-                            <span>{rxFileName}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
-                        <span className="text-xs text-wellness-charcoal/50 font-medium">
-                          No prescription file handy?
-                        </span>
-                        <button
-                          type="button"
-                          onClick={triggerSimulatedUpload}
-                          className="text-xs font-bold text-wellness-green hover:text-wellness-navy border border-wellness-green px-4 py-2 rounded-lg transition-colors cursor-pointer"
-                        >
-                          Simulate Verified Prescription
-                        </button>
-                      </div>
-
-                      {rxError && (
-                        <p className="text-xs font-bold text-red-500 flex items-center gap-1.5 mt-2">
-                          <AlertCircle size={14} />
-                          {rxError}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="bg-white border border-wellness-gray-200 rounded-2xl p-6 flex gap-4 items-center">
-                      <div className="w-10 h-10 rounded-full bg-wellness-green/10 text-wellness-green flex items-center justify-center shrink-0">
-                        <ShieldCheck size={20} />
-                      </div>
-                      <div>
-                        <h3 className="font-heading font-bold text-wellness-navy text-sm">
-                          OTC Items Only
-                        </h3>
-                        <p className="text-xs text-wellness-charcoal/60 leading-relaxed mt-0.5">
-                          Your cart only contains Over-The-Counter wellness products. No medical
-                          prescription is required.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center pt-4">
-                    <Link
-                      href="/products"
-                      className="inline-flex items-center gap-2 text-sm font-semibold text-wellness-charcoal/60 hover:text-wellness-navy transition-colors"
-                    >
-                      <ArrowLeft size={16} />
-                      Back to Shop
-                    </Link>
-                    <button
-                      onClick={handleReviewSubmit}
-                      className="bg-wellness-green hover:bg-wellness-navy text-white px-8 py-4 rounded-md font-semibold flex items-center gap-2 transition-colors shadow-md cursor-pointer"
-                    >
-                      <span>Shipping Address</span>
-                      <ArrowRight size={16} />
-                    </button>
-                  </div>
-                </motion.div>
+                <ReviewStep
+                  key="review-step"
+                  hasRxItems={hasRxItems}
+                  rxFileName={rxFileName}
+                  rxError={rxError}
+                  onFileChange={handleFileChange}
+                  onSimulateUpload={triggerSimulatedUpload}
+                  onSubmit={handleReviewSubmit}
+                />
               )}
 
-              {/* STEP 2: SHIPPING DETAILS */}
               {currentStep === 'shipping' && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-8"
-                >
-                  <div>
-                    <h2 className="text-3xl font-heading font-bold text-wellness-navy mb-2">
-                      Shipping Information
-                    </h2>
-                    <p className="text-wellness-charcoal/70">
-                      Please specify the destination address for your pharmaceutical delivery.
-                    </p>
-                  </div>
-
-                  <form onSubmit={handleShippingSubmit} className="space-y-6">
-                    <div className="bg-white border border-wellness-gray-200 rounded-2xl p-6 md:p-8 space-y-5">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-xs font-bold text-wellness-navy uppercase tracking-wider">
-                            Full Name
-                          </label>
-                          <input
-                            type="text"
-                            value={shippingForm.fullName}
-                            onChange={(e) => {
-                              setShippingForm({ ...shippingForm, fullName: e.target.value });
-                            }}
-                            className={`w-full px-4 py-3 rounded-lg border bg-wellness-white focus:outline-none focus:border-wellness-green transition-all ${
-                              shippingErrors.fullName
-                                ? 'border-red-400'
-                                : 'border-wellness-gray-200'
-                            }`}
-                            placeholder="John Doe"
-                          />
-                          {shippingErrors.fullName && (
-                            <p className="text-[10px] text-red-500 font-semibold">
-                              {shippingErrors.fullName}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-xs font-bold text-wellness-navy uppercase tracking-wider">
-                            Email Address
-                          </label>
-                          <input
-                            type="email"
-                            value={shippingForm.email}
-                            onChange={(e) => {
-                              setShippingForm({ ...shippingForm, email: e.target.value });
-                            }}
-                            className={`w-full px-4 py-3 rounded-lg border bg-wellness-white focus:outline-none focus:border-wellness-green transition-all ${
-                              shippingErrors.email ? 'border-red-400' : 'border-wellness-gray-200'
-                            }`}
-                            placeholder="john@example.com"
-                          />
-                          {shippingErrors.email && (
-                            <p className="text-[10px] text-red-500 font-semibold">
-                              {shippingErrors.email}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-bold text-wellness-navy uppercase tracking-wider">
-                          Phone Number
-                        </label>
-                        <input
-                          type="tel"
-                          value={shippingForm.phone}
-                          onChange={(e) => {
-                            setShippingForm({ ...shippingForm, phone: e.target.value });
-                          }}
-                          className={`w-full px-4 py-3 rounded-lg border bg-wellness-white focus:outline-none focus:border-wellness-green transition-all ${
-                            shippingErrors.phone ? 'border-red-400' : 'border-wellness-gray-200'
-                          }`}
-                          placeholder="+1 (555) 123-4567"
-                        />
-                        {shippingErrors.phone && (
-                          <p className="text-[10px] text-red-500 font-semibold">
-                            {shippingErrors.phone}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-bold text-wellness-navy uppercase tracking-wider">
-                          Street Address
-                        </label>
-                        <input
-                          type="text"
-                          value={shippingForm.address}
-                          onChange={(e) => {
-                            setShippingForm({ ...shippingForm, address: e.target.value });
-                          }}
-                          className={`w-full px-4 py-3 rounded-lg border bg-wellness-white focus:outline-none focus:border-wellness-green transition-all ${
-                            shippingErrors.address ? 'border-red-400' : 'border-wellness-gray-200'
-                          }`}
-                          placeholder="123 Main St, Apt 4B"
-                        />
-                        {shippingErrors.address && (
-                          <p className="text-[10px] text-red-500 font-semibold">
-                            {shippingErrors.address}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-5">
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-xs font-bold text-wellness-navy uppercase tracking-wider">
-                            City
-                          </label>
-                          <input
-                            type="text"
-                            value={shippingForm.city}
-                            onChange={(e) => {
-                              setShippingForm({ ...shippingForm, city: e.target.value });
-                            }}
-                            className={`w-full px-4 py-3 rounded-lg border bg-wellness-white focus:outline-none focus:border-wellness-green transition-all ${
-                              shippingErrors.city ? 'border-red-400' : 'border-wellness-gray-200'
-                            }`}
-                            placeholder="New York"
-                          />
-                          {shippingErrors.city && (
-                            <p className="text-[10px] text-red-500 font-semibold">
-                              {shippingErrors.city}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-xs font-bold text-wellness-navy uppercase tracking-wider">
-                            ZIP Code
-                          </label>
-                          <input
-                            type="text"
-                            value={shippingForm.zipCode}
-                            onChange={(e) => {
-                              setShippingForm({ ...shippingForm, zipCode: e.target.value });
-                            }}
-                            className={`w-full px-4 py-3 rounded-lg border bg-wellness-white focus:outline-none focus:border-wellness-green transition-all ${
-                              shippingErrors.zipCode ? 'border-red-400' : 'border-wellness-gray-200'
-                            }`}
-                            placeholder="10001"
-                          />
-                          {shippingErrors.zipCode && (
-                            <p className="text-[10px] text-red-500 font-semibold">
-                              {shippingErrors.zipCode}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center pt-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCurrentStep('review');
-                        }}
-                        className="inline-flex items-center gap-2 text-sm font-semibold text-wellness-charcoal/60 hover:text-wellness-navy transition-colors cursor-pointer"
-                      >
-                        <ArrowLeft size={16} />
-                        Back to Review
-                      </button>
-                      <button
-                        type="submit"
-                        className="bg-wellness-green hover:bg-wellness-navy text-white px-8 py-4 rounded-md font-semibold flex items-center gap-2 transition-colors shadow-md cursor-pointer"
-                      >
-                        <span>Continue to Payment</span>
-                        <ArrowRight size={16} />
-                      </button>
-                    </div>
-                  </form>
-                </motion.div>
+                <ShippingStep
+                  key="shipping-step"
+                  savedAddresses={savedAddresses}
+                  selectedAddressId={selectedAddressId}
+                  isAddingNewAddress={isAddingNewAddress}
+                  onSelectSavedAddress={handleSelectSavedAddress}
+                  onAddNewAddressClick={handleAddNewAddressClick}
+                  registerShipping={registerShipping}
+                  shippingErrors={shippingErrors}
+                  shippingForm={shippingForm}
+                  setShippingValue={setShippingValue}
+                  isFetchingPincode={isFetchingPincode}
+                  pincodeSuccessMsg={pincodeSuccessMsg}
+                  pincodeErrorMsg={pincodeErrorMsg}
+                  onPincodeFetch={(code) => {
+                    void fetchLocationByPincode(code);
+                  }}
+                  onSubmit={(e) => {
+                    void handleShippingSubmit(onShippingFormSubmit)(e);
+                  }}
+                  onBack={() => {
+                    setCurrentStep('review');
+                  }}
+                  onEditAddress={() => {
+                    setIsAddingNewAddress(true);
+                  }}
+                />
               )}
 
-              {/* STEP 3: SECURE PAYMENT */}
               {currentStep === 'payment' && (
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-8"
-                >
-                  <Script
-                    src="https://checkout.razorpay.com/v1/checkout.js"
-                    strategy="lazyOnload"
-                  />
-
-                  <div>
-                    <h2 className="text-3xl font-heading font-bold text-wellness-navy mb-2">
-                      Secure Checkout
-                    </h2>
-                    <p className="text-wellness-charcoal/70">
-                      Complete your therapeutic order securely with the Razorpay gateway.
-                    </p>
-                  </div>
-
-                  <div className="space-y-6">
-                    {/* Redesigned Premium Payment Box */}
-                    <div className="bg-white/80 backdrop-blur-md border border-wellness-gray-200 rounded-3xl p-6 md:p-8 space-y-8 shadow-sm">
-                      <div className="flex items-center justify-between border-b border-wellness-gray-100 pb-5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-sans italic font-black tracking-tight text-[#3399cc] text-2xl">
-                            Razorpay
-                          </span>
-                          <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                            Official Integration
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-wellness-green bg-wellness-green/10 px-3 py-1 rounded-full text-xs font-bold">
-                          <ShieldCheck size={16} />
-                          <span>Secure SSL</span>
-                        </div>
-                      </div>
-
-                      {/* Billing Information Summary */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-wellness-gray-50/50 p-5 rounded-2xl border border-wellness-gray-100">
-                        <div>
-                          <h4 className="text-[10px] font-bold text-wellness-charcoal/40 uppercase tracking-widest mb-2">
-                            Delivery Recipient
-                          </h4>
-                          <p className="text-sm font-bold text-wellness-navy">
-                            {shippingForm.fullName}
-                          </p>
-                          <p className="text-xs text-wellness-charcoal/70 mt-1 font-medium">
-                            {shippingForm.phone}
-                          </p>
-                          <p className="text-xs text-wellness-charcoal/70 font-medium">
-                            {shippingForm.email}
-                          </p>
-                        </div>
-                        <div>
-                          <h4 className="text-[10px] font-bold text-wellness-charcoal/40 uppercase tracking-widest mb-2">
-                            Shipping Destination
-                          </h4>
-                          <p className="text-xs text-wellness-charcoal/70 font-medium leading-relaxed font-sans">
-                            {shippingForm.address},<br />
-                            {shippingForm.city} - {shippingForm.zipCode}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row items-baseline sm:justify-between gap-2 border-b border-wellness-gray-100 pb-5">
-                        <div>
-                          <span className="text-xs text-wellness-charcoal/50 uppercase tracking-widest font-bold">
-                            Grand Total (INR)
-                          </span>
-                          <div className="flex items-baseline gap-2 mt-1">
-                            <span className="text-4xl font-heading font-extrabold text-wellness-navy">
-                              ₹{totalCost.toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-xs text-wellness-charcoal/50 font-semibold sm:text-right">
-                          Includes 10% tax and shipping fee
-                        </div>
-                      </div>
-
-                      {paymentError && (
-                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-start gap-2.5 text-xs font-semibold">
-                          <AlertCircle className="shrink-0 text-red-500" size={16} />
-                          <div>{paymentError}</div>
-                        </div>
-                      )}
-
-                      {/* Checkout Action Button */}
-                      <button
-                        type="button"
-                        onClick={handlePayment}
-                        disabled={isSubmitting}
-                        className="w-full bg-wellness-navy hover:bg-wellness-green text-white py-4.5 rounded-xl font-bold flex items-center justify-center gap-2.5 transition-all duration-300 shadow-md hover:shadow-lg text-base cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group"
-                      >
-                        {isSubmitting ? (
-                          <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>
-                        ) : (
-                          <>
-                            <Lock
-                              size={18}
-                              className="text-wellness-light-green group-hover:text-white transition-colors"
-                            />
-                            <span>Authenticate & Pay</span>
-                          </>
-                        )}
-                      </button>
-
-                      {/* Informational Warning / Test Notice */}
-                      <div className="text-center">
-                        <p className="text-[10px] text-wellness-charcoal/40 font-semibold">
-                          By clicking above, the official Razorpay Checkout interface will open.
-                        </p>
-                        {(!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-                          process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID.includes('dummy')) && (
-                          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-medium leading-relaxed">
-                            💡 <strong>Dev Notice:</strong> Razorpay credentials are not configured
-                            in environment variables. Clicking pay will automatically simulate a
-                            successful checkout.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center pt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCurrentStep('shipping');
-                        }}
-                        className="inline-flex items-center gap-2 text-sm font-semibold text-wellness-charcoal/60 hover:text-wellness-navy transition-colors cursor-pointer"
-                      >
-                        <ArrowLeft size={16} />
-                        Back to Shipping
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
+                <PaymentStep
+                  key="payment-step"
+                  shippingForm={shippingForm}
+                  totalCost={totalCost}
+                  paymentError={paymentError}
+                  isSubmitting={isSubmitting}
+                  onPayment={() => {
+                    void handlePayment();
+                  }}
+                  onBack={() => {
+                    setCurrentStep('shipping');
+                  }}
+                />
               )}
             </AnimatePresence>
           </div>
 
-          {/* Sidebar Order Summary (visible in checkout steps) */}
-          {true && (
-            <div className="lg:col-span-5">
-              <div className="bg-wellness-gray-50 border border-wellness-gray-200 rounded-2xl p-6 md:p-8 space-y-6 sticky top-40">
-                <h3 className="text-lg font-heading font-bold text-wellness-navy border-b border-wellness-gray-200 pb-3 flex items-center gap-2">
-                  <Package size={20} />
-                  <span>Order Summary</span>
-                </h3>
-
-                {/* Items list */}
-                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
-                  {cartItems.map((item) => (
-                    <div key={item.product.id} className="flex gap-4 items-center">
-                      <div className="relative w-12 h-12 bg-white rounded border border-wellness-gray-200 overflow-hidden shrink-0">
-                        <Image
-                          src={item.product.image}
-                          alt={item.product.name}
-                          fill
-                          className="object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                      <div className="flex-grow min-w-0">
-                        <h4 className="text-xs font-bold text-wellness-navy truncate">
-                          {item.product.name}
-                        </h4>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[9px] font-bold text-wellness-navy bg-wellness-gray-200/60 px-1.5 py-0.2 rounded uppercase tracking-wider">
-                            {item.product.type}
-                          </span>
-                          <span className="text-[10px] text-wellness-charcoal/50 font-medium">
-                            Qty: {item.quantity}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold text-wellness-navy shrink-0">
-                        ₹{(item.product.price * item.quantity).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Costs breakdown */}
-                <div className="border-t border-wellness-gray-200 pt-4 space-y-2 text-xs font-medium text-wellness-charcoal/70">
-                  <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <span className="text-wellness-navy font-bold">₹{cartSubtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Shipping</span>
-                    {shippingCost === 0 ? (
-                      <span className="text-wellness-green font-bold uppercase tracking-wider">
-                        Free
-                      </span>
-                    ) : (
-                      <span className="text-wellness-navy font-bold">
-                        ₹{shippingCost.toFixed(2)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Tax (10%)</span>
-                    <span className="text-wellness-navy font-bold">₹{taxCost.toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-wellness-gray-200 pt-3 flex justify-between text-sm font-heading font-bold text-wellness-navy">
-                    <span>Total Amount</span>
-                    <span>₹{totalCost.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {/* Trust badge */}
-                <div className="flex items-center gap-2.5 justify-center pt-2 text-[10px] text-wellness-charcoal/40 font-bold uppercase tracking-wider border-t border-wellness-gray-200/50">
-                  <Lock size={12} />
-                  <span>256-bit SSL Encryption</span>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Sidebar Order Summary */}
+          <div className="lg:col-span-5">
+            <OrderSummary
+              cartItems={cartItems}
+              cartSubtotal={cartSubtotal}
+              shippingCost={shippingCost}
+              taxCost={taxCost}
+              totalCost={totalCost}
+            />
+          </div>
         </div>
       </div>
+
+      {/* Auth Required Modal */}
+      <AuthRequiredModal
+        isOpen={showAuthModal}
+        onClose={() => {
+          setShowAuthModal(false);
+        }}
+      />
     </div>
   );
 }

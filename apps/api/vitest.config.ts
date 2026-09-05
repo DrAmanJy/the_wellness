@@ -1,6 +1,16 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from 'vitest/config';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   test: {
     pool: 'forks',
     poolOptions: {
@@ -13,13 +23,17 @@ export default defineConfig({
       concurrent: false,
     },
     environment: 'node',
+    env: {
+      NODE_ENV: 'test',
+      DATABASE_URL:
+        process.env.DATABASE_URL || 'postgres://postgres:password@localhost:5432/wellness',
+    },
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: [
         'src/server.ts',
         'src/lib/razorpay.ts',
-        'src/test/**',
         'src/performance/**',
         'scripts/**',
         '**/*.test.ts',

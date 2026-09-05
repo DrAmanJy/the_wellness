@@ -4,12 +4,8 @@ import React from 'react';
 
 import ProductDetailClient from './ProductDetailClient';
 
-import { products } from '@/lib/products';
-
-export async function generateStaticParams() {
-  return products.map((product) => ({
-    slug: product.id,
-  }));
+export function generateStaticParams() {
+  return [];
 }
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {

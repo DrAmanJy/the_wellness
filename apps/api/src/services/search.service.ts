@@ -1,118 +1,84 @@
-import {
-  db,
-  products,
-  categories,
-  productVariants,
-  eq,
-  isNull,
-  and,
-  or,
-  ilike,
-} from '@wellness/db';
+import { db, products, categories, or, ilike, and, eq } from '@wellness/db';
 
 import { toProductListDTO, toSearchSuggestionDTO } from './product.mapper';
 
 export class SearchService {
   async searchCatalog(query: string, limit = 20) {
     if (!query || query.trim() === '') {
-      return { products: [], categories: [] };
+      return { products: [], categories: [], total: 0 };
     }
-    const q = `%${query}%`;
+    const cleanQuery = query.trim();
+    const q = `%${cleanQuery}%`;
 
     const foundProducts = await db
-      .select({
-        id: products.id,
-        name: products.name,
-        slug: products.slug,
-        shortDescription: products.shortDescription,
-        brand: products.brand,
-        isFeatured: products.isFeatured,
-      })
+      .select()
       .from(products)
-      .leftJoin(productVariants, eq(products.id, productVariants.productId))
-      .where(
-        and(
-          eq(products.status, 'active'),
-          isNull(products.deletedAt),
-          or(
-            ilike(products.name, q),
-            ilike(products.slug, q),
-            ilike(products.description, q),
-            ilike(productVariants.sku, q),
-          ),
-        ),
-      )
-      .groupBy(products.id)
+      .where(or(ilike(products.name, q), ilike(products.description, q)))
       .limit(limit);
 
     const foundCategories = await db
-      .select({
-        id: categories.id,
-        name: categories.name,
-        slug: categories.slug,
-        description: categories.description,
-      })
+      .select()
       .from(categories)
       .where(
         and(
           eq(categories.isActive, true),
-          isNull(categories.deletedAt),
-          or(
-            ilike(categories.name, q),
-            ilike(categories.slug, q),
-            ilike(categories.description, q),
-          ),
+          or(ilike(categories.name, q), ilike(categories.description, q)),
         ),
       )
       .limit(limit);
 
+    const mappedProducts = foundProducts.map((p) => toProductListDTO(p));
+
     return {
-      products: foundProducts.map(toProductListDTO),
+      products: mappedProducts,
       categories: foundCategories,
+      total: mappedProducts.length + foundCategories.length,
     };
   }
 
   async getSuggestions(query: string, limit = 5) {
-    if (!query || query.trim().length < 2) {
+    if (!query || query.trim().length < 1) {
       return [];
     }
-    const q = `%${query}%`;
+    const cleanQuery = query.trim();
+    const q = `%${cleanQuery}%`;
 
     const pSuggestions = await db
       .select({
         id: products.id,
-        label: products.name,
-        slug: products.slug,
+        name: products.name,
+        sellingPrice: products.sellingPrice,
       })
       .from(products)
-      .where(
-        and(
-          eq(products.status, 'active'),
-          isNull(products.deletedAt),
-          or(ilike(products.name, q), ilike(products.slug, q)),
-        ),
-      )
+      .where(or(ilike(products.name, q), ilike(products.description, q)))
       .limit(limit);
 
     const cSuggestions = await db
       .select({
         id: categories.id,
         label: categories.name,
-        slug: categories.slug,
       })
       .from(categories)
       .where(
         and(
           eq(categories.isActive, true),
-          isNull(categories.deletedAt),
-          or(ilike(categories.name, q), ilike(categories.slug, q)),
+          or(ilike(categories.name, q), ilike(categories.description, q)),
         ),
       )
       .limit(limit);
 
     const suggestions = [
-      ...pSuggestions.map((p) => ({ ...p, type: 'product' as const })),
-      ...cSuggestions.map((c) => ({ ...c, type: 'category' as const })),
+      ...pSuggestions.map((p) => ({
+        id: p.id,
+        label: p.name,
+        type: 'product' as const,
+        price: p.sellingPrice,
+      })),
+      ...cSuggestions.map((c) => ({
+        id: c.id,
+        label: c.label,
+        type: 'category' as const,
+      })),
     ];
 
     return suggestions.slice(0, limit).map(toSearchSuggestionDTO);

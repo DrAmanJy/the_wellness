@@ -60,7 +60,7 @@ export default function ResearchPage() {
           pinSpacing: false,
         });
 
-        gsap.utils.toArray('.process-step').forEach((step: any, i) => {
+        gsap.utils.toArray<HTMLElement>('.process-step').forEach((step) => {
           gsap.from(step, {
             scrollTrigger: {
               trigger: step,

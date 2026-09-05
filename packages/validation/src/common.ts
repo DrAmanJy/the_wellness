@@ -7,6 +7,10 @@ export const paginationSchema = z.object({
 
 export const LimitSchema = z.coerce.number().int().min(1).max(100);
 
+export const UuidSchema = z.string().uuid('Invalid UUID format');
+
+export const CartIdHeaderSchema = z.string().uuid('Invalid cart ID format').optional();
+
 export type PaginationQuery = z.infer<typeof paginationSchema>;
 
 export const CursorSchema = z.string().transform((val, ctx) => {
@@ -18,10 +22,13 @@ export const CursorSchema = z.string().transform((val, ctx) => {
       throw new Error('Not an object');
     }
 
-    const cursorObj = parsed as { createdAt?: string | number | Date; id?: string };
+    const cursorObj = parsed as { createdAt?: string | number | Date; id?: string | number };
     const cursorDate = new Date(cursorObj.createdAt ?? '');
 
-    if (isNaN(cursorDate.getTime()) || typeof cursorObj.id !== 'string') {
+    if (
+      isNaN(cursorDate.getTime()) ||
+      (typeof cursorObj.id !== 'string' && typeof cursorObj.id !== 'number')
+    ) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid cursor format' });
       return z.NEVER;
     }

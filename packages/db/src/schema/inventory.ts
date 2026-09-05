@@ -1,26 +1,20 @@
-import { sql } from 'drizzle-orm';
-import { pgTable, integer, timestamp, check, uuid, uniqueIndex, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, integer, timestamp, uuid, pgEnum, uniqueIndex } from 'drizzle-orm/pg-core';
 
-import { productVariants } from './product';
+import { products } from './product';
 
 export const inventory = pgTable(
   'inventory',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    variantId: uuid('variant_id')
+    id: uuid('id').defaultRandom().primaryKey(),
+    productId: uuid('product_id')
       .notNull()
-      .references(() => productVariants.id),
+      .references(() => products.id)
+      .unique(),
     availableQty: integer('available_qty').default(0).notNull(),
     reservedQty: integer('reserved_qty').default(0).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => {
-    return [
-      uniqueIndex('inventory_variant_unique_idx').on(table.variantId),
-      check('inventory_available_qty_positive', sql`${table.availableQty} >= 0`),
-      check('inventory_reserved_qty_positive', sql`${table.reservedQty} >= 0`),
-    ];
-  },
+  (table) => [uniqueIndex('inventory_product_unique_idx').on(table.productId)],
 );
 
 export const inventoryTransactionTypeEnum = pgEnum('inventory_transaction_type', [
@@ -32,19 +26,13 @@ export const inventoryTransactionTypeEnum = pgEnum('inventory_transaction_type',
   'adjustment',
 ]);
 
-export const inventoryTransactions = pgTable(
-  'inventory_transactions',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    variantId: uuid('variant_id')
-      .notNull()
-      .references(() => productVariants.id),
-    orderId: uuid('order_id'), // Nullable
-    type: inventoryTransactionTypeEnum('type').notNull(),
-    quantity: integer('quantity').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => {
-    return [check('inventory_transactions_quantity_positive', sql`${table.quantity} > 0`)];
-  },
-);
+export const inventoryTransactions = pgTable('inventory_transaction', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  productId: uuid('product_id')
+    .notNull()
+    .references(() => products.id),
+  orderId: uuid('order_id'),
+  type: inventoryTransactionTypeEnum('type').notNull(),
+  quantity: integer('quantity').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});

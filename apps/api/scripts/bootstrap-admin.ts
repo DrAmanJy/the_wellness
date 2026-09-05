@@ -1,4 +1,4 @@
-import { db, role, userRole, user, eq, and } from '@wellness/db';
+import { db, user, eq } from '@wellness/db';
 
 async function bootstrap() {
   const userId = process.argv[2];
@@ -19,43 +19,13 @@ async function bootstrap() {
       process.exit(1);
     }
 
-    // Ensure admin role exists
-    let adminRole = await db.query.role.findFirst({
-      where: eq(role.name, 'admin'),
-    });
-
-    if (!adminRole) {
-      const [newRole] = await db
-        .insert(role)
-        .values({
-          id: crypto.randomUUID(),
-          name: 'admin',
-        })
-        .returning();
-
-      if (!newRole) {
-        throw new Error('Failed to create admin role');
-      }
-
-      adminRole = newRole;
-      console.log('Created admin role.');
-    }
-
-    // Check if user already has admin role
-    const existingUserRole = await db.query.userRole.findFirst({
-      where: and(eq(userRole.userId, userId), eq(userRole.roleId, adminRole.id)),
-    });
-
-    if (existingUserRole) {
+    if (existingUser.role === 'admin') {
       console.log(`User ${userId} is already an admin.`);
       process.exit(0);
     }
 
-    // Assign admin role
-    await db.insert(userRole).values({
-      userId,
-      roleId: adminRole.id,
-    });
+    // Assign admin role directly on user table
+    await db.update(user).set({ role: 'admin' }).where(eq(user.id, userId));
 
     console.log(`Successfully assigned admin role to user ${userId}.`);
     process.exit(0);

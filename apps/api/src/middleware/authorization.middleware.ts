@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 
-import { db, userRole, role, eq } from '@wellness/db';
+import { db, user, eq } from '@wellness/db';
 import { AppError, UnauthorizedError } from '@wellness/utils';
 import { asyncHandler } from '@wellness/utils';
 
@@ -12,13 +12,12 @@ export const resolveRoles = asyncHandler(
       throw new UnauthorizedError();
     }
 
-    const userRoles = await db
-      .select({ name: role.name })
-      .from(userRole)
-      .innerJoin(role, eq(userRole.roleId, role.id))
-      .where(eq(userRole.userId, req.auth.userId));
+    const currentUser = await db.query.user.findFirst({
+      where: eq(user.id, req.auth.userId),
+      columns: { role: true },
+    });
 
-    req.auth.roles = userRoles.map((r) => r.name);
+    req.auth.roles = currentUser?.role ? [currentUser.role] : [];
     next();
   },
 );

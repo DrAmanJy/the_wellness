@@ -3,29 +3,98 @@
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/dist/ScrollTrigger';
-import { ArrowRight, Heart } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 
-import { useWishlist } from '@/context/WishlistContext';
-import { products } from '@/lib/products';
+import { Product } from '@/lib/products';
 
 if (typeof window !== 'undefined') {
   gsap.registerPlugin(ScrollTrigger);
 }
 
-// Get top 3 featured products from our updated list
-const featuredProducts = products.slice(0, 3);
+type ApiProduct = {
+  id: string;
+  name: string;
+  categoryName?: string;
+  category?: string;
+  type?: string;
+  description?: string;
+  primaryImage?: string;
+  image?: string;
+  sellingPrice?: string | number;
+  isFeatured?: boolean;
+  isBestSeller?: boolean;
+  isNewest?: boolean;
+};
+
+type ApiResponse = {
+  success?: boolean;
+  products?: ApiProduct[];
+  data?: {
+    products?: ApiProduct[];
+    items?: ApiProduct[];
+  };
+};
 
 export default function FeaturedProducts() {
   const container = useRef<HTMLDivElement>(null);
-  const { toggleProductInWishlist, isInWishlist } = useWishlist();
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadProducts() {
+      try {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const res = await fetch(`${API_BASE}/api/products`, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const json = (await res.json()) as ApiResponse;
+          const items = json.data?.products || json.data?.items || json.products || [];
+          if (Array.isArray(items)) {
+            const mapped: Product[] = items.map((item) => {
+              const sp = item.sellingPrice;
+              const price = typeof sp === 'number' ? sp : parseFloat(sp || '0');
+              const itemType =
+                item.type === 'Prescription (Rx)'
+                  ? ('Prescription (Rx)' as const)
+                  : ('Over-The-Counter (OTC)' as const);
+
+              return {
+                id: item.id,
+                name: item.name,
+                category: item.categoryName || item.category || 'Uncategorized',
+                type: itemType,
+                description: item.description || 'No description provided.',
+                benefits: [],
+                ingredients: [],
+                image:
+                  item.primaryImage ||
+                  item.image ||
+                  'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=400',
+                price,
+                isFeatured: item.isFeatured ?? false,
+                isBestSeller: item.isBestSeller ?? false,
+                isNewest: item.isNewest ?? false,
+              };
+            });
+
+            const featuredOnly = mapped.filter((p) => p.isFeatured);
+            setFeaturedProducts(featuredOnly.length > 0 ? featuredOnly : mapped.slice(0, 3));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load featured products from API:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    void loadProducts();
+  }, []);
 
   useGSAP(
     () => {
       const ctx = gsap.context(() => {
-        // Title animation
         gsap.from('.section-header', {
           scrollTrigger: {
             trigger: '.section-header',
@@ -37,25 +106,26 @@ export default function FeaturedProducts() {
           ease: 'power3.out',
         });
 
-        // Products stagger animation
-        gsap.from('.product-card', {
-          scrollTrigger: {
-            trigger: '.products-grid',
-            start: 'top 80%',
-          },
-          y: 50,
-          opacity: 0,
-          duration: 0.8,
-          stagger: 0.15,
-          ease: 'power3.out',
-        });
+        if (featuredProducts.length > 0) {
+          gsap.from('.product-card', {
+            scrollTrigger: {
+              trigger: '.products-grid',
+              start: 'top 80%',
+            },
+            y: 50,
+            opacity: 0,
+            duration: 0.8,
+            stagger: 0.15,
+            ease: 'power3.out',
+          });
+        }
       }, container);
 
       return () => {
         ctx.revert();
       };
     },
-    { scope: container },
+    { scope: container, dependencies: [featuredProducts] },
   );
 
   return (
@@ -80,60 +150,48 @@ export default function FeaturedProducts() {
           </Link>
         </div>
 
-        <div className="products-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {featuredProducts.map((product) => (
-            <Link
-              key={product.id}
-              href={`/products/${product.id}`}
-              className="product-card group block bg-white border border-wellness-gray-100 rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-300"
-            >
-              <div className="relative aspect-[4/3] overflow-hidden bg-wellness-gray-100">
-                <Image
-                  src={product.image}
-                  alt={product.name}
-                  fill
-                  className="object-cover transition-transform duration-700 group-hover:scale-105"
-                  referrerPolicy="no-referrer"
-                />
-
-                {/* Wishlist toggle button */}
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleProductInWishlist(product);
-                  }}
-                  className="absolute top-4 left-4 z-20 w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm border border-wellness-gray-200/50 flex items-center justify-center text-wellness-navy hover:text-red-500 hover:bg-white hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer group/wishlist"
-                  aria-label="Toggle Wishlist"
-                >
-                  <Heart
-                    size={15}
-                    className={
-                      isInWishlist(product.id)
-                        ? 'fill-red-500 text-red-500'
-                        : 'text-wellness-navy group-hover/wishlist:text-red-500'
-                    }
+        {loading ? (
+          <div className="py-16 text-center text-wellness-charcoal/50">Loading products...</div>
+        ) : featuredProducts.length === 0 ? (
+          <div className="py-16 text-center text-wellness-charcoal/50">
+            No products found in the catalog.
+          </div>
+        ) : (
+          <div className="products-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {featuredProducts.map((product) => (
+              <Link
+                key={product.id}
+                href={`/products/${product.id}`}
+                className="product-card group block bg-white border border-wellness-gray-100 rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-300"
+              >
+                <div className="relative aspect-[4/3] overflow-hidden bg-wellness-gray-100">
+                  <Image
+                    src={product.image}
+                    alt={product.name}
+                    fill
+                    className="object-cover transition-transform duration-700 group-hover:scale-105"
+                    referrerPolicy="no-referrer"
                   />
-                </button>
 
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-wellness-navy shadow-sm">
-                  {product.type}
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-wellness-navy shadow-sm">
+                    {product.type}
+                  </div>
                 </div>
-              </div>
-              <div className="p-8">
-                <p className="text-sm font-semibold tracking-wider uppercase text-wellness-green mb-2">
-                  {product.category}
-                </p>
-                <h3 className="text-2xl font-heading font-bold text-wellness-navy group-hover:text-wellness-green transition-colors mb-3">
-                  {product.name}
-                </h3>
-                <p className="text-wellness-charcoal/70 text-sm line-clamp-2">
-                  {product.description}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
+                <div className="p-8">
+                  <p className="text-sm font-semibold tracking-wider uppercase text-wellness-green mb-2">
+                    {product.category}
+                  </p>
+                  <h3 className="text-2xl font-heading font-bold text-wellness-navy group-hover:text-wellness-green transition-colors mb-3">
+                    {product.name}
+                  </h3>
+                  <p className="text-wellness-charcoal/70 text-sm line-clamp-2">
+                    {product.description}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

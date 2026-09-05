@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   emailVerified: boolean;
   image?: string | null;
+  role?: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }

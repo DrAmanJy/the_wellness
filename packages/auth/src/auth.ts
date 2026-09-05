@@ -2,7 +2,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 
 import { env } from '@wellness/config';
-import { db, role, userRole, eq } from '@wellness/db';
+import { db } from '@wellness/db';
 
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
@@ -20,6 +20,19 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: 'pg',
   }),
+  accountLinking: {
+    enabled: true,
+    trustedProviders: ['google', 'apple'],
+  },
+  user: {
+    additionalFields: {
+      role: {
+        type: 'string',
+        defaultValue: 'customer',
+        required: false,
+      },
+    },
+  },
   socialProviders: {
     google: {
       clientId: env.GOOGLE_CLIENT_ID,
@@ -33,28 +46,5 @@ export const auth = betterAuth({
           },
         }
       : {}),
-  },
-  databaseHooks: {
-    user: {
-      create: {
-        after: async (user) => {
-          // Assign customer role by default
-          try {
-            const customerRole = await db.query.role.findFirst({
-              where: eq(role.name, 'customer'),
-            });
-
-            if (customerRole) {
-              await db.insert(userRole).values({
-                userId: user.id,
-                roleId: customerRole.id,
-              });
-            }
-          } catch (error) {
-            console.error('Failed to assign default role:', error);
-          }
-        },
-      },
-    },
   },
 });

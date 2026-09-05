@@ -44,11 +44,12 @@ export default function PageLoader() {
     }, 300);
   };
 
+  const searchParamsString = searchParams.toString();
+
   // Detect route change completion
   useEffect(() => {
     stopLoading();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, searchParams]);
+  }, [pathname, searchParamsString]);
 
   useEffect(() => {
     const handleLinkClick = (e: MouseEvent) => {
@@ -96,7 +97,7 @@ export default function PageLoader() {
       <div
         className="h-[3px] bg-wellness-green shadow-[0_0_8px_#10B981,0_0_4px_#10B981] transition-all duration-200 ease-out"
         style={{
-          width: `${progress}%`,
+          width: `${String(progress)}%`,
         }}
       />
     </div>

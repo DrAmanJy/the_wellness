@@ -1,77 +1,67 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { z } from 'zod';
 
 import { asyncHandler } from '@wellness/utils';
-import { AddItemSchema, UpdateItemSchema } from '@wellness/validation';
+import { AddItemSchema, UpdateItemSchema, CartIdHeaderSchema } from '@wellness/validation';
 
-
-import { requireAuth, AuthenticatedRequest } from '../middleware/auth.middleware';
 import { cartService } from '../services/cart.service';
 
 const router = Router();
 
+function getUserId(req: Request) {
+  return req.auth?.userId;
+}
 
+function getCartId(req: Request): string | undefined {
+  const headerVal = req.headers['x-cart-id'];
+  if (!headerVal || typeof headerVal !== 'string') return undefined;
+  const result = CartIdHeaderSchema.safeParse(headerVal);
+  return result.success ? result.data : undefined;
+}
 
 router.get(
   '/',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.auth.userId;
-    const cart = await cartService.getCartReadonly(userId);
+  asyncHandler(async (req, res) => {
+    const cart = await cartService.getCart(getUserId(req), getCartId(req));
     res.json({ success: true, data: cart });
   }),
 );
 
 router.post(
   '/items',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
+  asyncHandler(async (req, res) => {
     const data = AddItemSchema.parse(req.body);
-    const userId = req.auth.userId;
-    await cartService.addItem(userId, data.variantId, data.quantity);
-
-    // Return the updated cart
-    const cart = await cartService.getCart(userId);
+    const cart = await cartService.addItem(
+      data.productId,
+      data.quantity,
+      getUserId(req),
+      getCartId(req),
+    );
     res.status(201).json({ success: true, data: cart });
   }),
 );
 
 router.patch(
   '/items/:id',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const itemId = z.string().uuid().parse(req.params.id);
+  asyncHandler(async (req, res) => {
+    const productId = z.string().uuid('Invalid product ID format').parse(req.params.id);
     const data = UpdateItemSchema.parse(req.body);
 
-    const userId = req.auth.userId;
-    await cartService.updateItemQuantity(userId, itemId, data.quantity);
-
-    const cart = await cartService.getCart(userId);
+    const cart = await cartService.updateItemQuantity(
+      productId,
+      data.quantity,
+      getUserId(req),
+      getCartId(req),
+    );
     res.json({ success: true, data: cart });
   }),
 );
 
 router.delete(
   '/items/:id',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const itemId = z.string().uuid().parse(req.params.id);
-    const userId = req.auth.userId;
-    await cartService.removeItem(userId, itemId);
-
-    const cart = await cartService.getCart(userId);
-    res.json({ success: true, data: cart });
-  }),
-);
-
-router.delete(
-  '/',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.auth.userId;
-    await cartService.clearCart(userId);
-
-    const cart = await cartService.getCart(userId);
+  asyncHandler(async (req, res) => {
+    const productId = z.string().uuid('Invalid product ID format').parse(req.params.id);
+    const cart = await cartService.removeItem(productId, getUserId(req), getCartId(req));
     res.json({ success: true, data: cart });
   }),
 );

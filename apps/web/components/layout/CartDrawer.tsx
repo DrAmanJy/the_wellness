@@ -121,91 +121,154 @@ export default function CartDrawer() {
                     </div>
                   )}
 
-                  <div className="space-y-4">
-                    {cartItems.map((item) => (
-                      <div
-                        key={item.product.id}
-                        className="flex gap-4 p-4 rounded-xl border border-wellness-gray-100 bg-white hover:border-wellness-gray-200 transition-all group"
-                      >
-                        {/* Image */}
-                        <div className="relative w-20 h-20 bg-wellness-gray-50 rounded-lg overflow-hidden shrink-0 border border-wellness-gray-100">
-                          <Image
-                            src={item.product.image}
-                            alt={item.product.name}
-                            fill
-                            className="object-cover"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-
-                        {/* Details */}
-                        <div className="flex-grow flex flex-col justify-between min-w-0">
+                  {/* Out of Stock Warning if any item has 0 stock */}
+                  {(() => {
+                    const outOfStockItems = cartItems.filter((item) => {
+                      const stock =
+                        item.product.availableQty ??
+                        item.product.inventoryQty ??
+                        item.product.stockQty ??
+                        0;
+                      return (
+                        stock <= 0 ||
+                        item.product.stockStatus === 'out_of_stock' ||
+                        item.quantity > stock
+                      );
+                    });
+                    if (outOfStockItems.length > 0) {
+                      return (
+                        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg flex gap-3">
+                          <AlertTriangle className="text-red-600 shrink-0 mt-0.5" size={18} />
                           <div>
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <h4 className="font-heading font-bold text-wellness-navy text-sm truncate group-hover:text-wellness-green transition-colors">
-                                <Link
-                                  href={`/products/${item.product.id}`}
-                                  onClick={() => {
-                                    setCartOpen(false);
-                                  }}
-                                >
-                                  {item.product.name}
-                                </Link>
-                              </h4>
-                              <button
-                                onClick={() => {
-                                  removeFromCart(item.product.id);
-                                }}
-                                className="text-wellness-charcoal/40 hover:text-red-500 transition-colors p-1"
-                                aria-label="Remove item"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-[10px] font-bold text-wellness-navy bg-wellness-gray-100 px-2 py-0.5 rounded uppercase tracking-wider">
-                                {item.product.type}
-                              </span>
-                              <span className="text-[10px] font-semibold text-wellness-charcoal/50">
-                                {item.product.category}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between mt-auto">
-                            {/* Quantity Controls */}
-                            <div className="flex items-center border border-wellness-gray-200 rounded bg-wellness-white">
-                              <button
-                                onClick={() => {
-                                  updateQuantity(item.product.id, item.quantity - 1);
-                                }}
-                                className="px-2 py-1 text-wellness-charcoal/60 hover:text-wellness-navy hover:bg-wellness-gray-100 transition-colors"
-                                aria-label="Decrease quantity"
-                              >
-                                <Minus size={12} />
-                              </button>
-                              <span className="px-3 text-xs font-bold text-wellness-navy min-w-[20px] text-center">
-                                {item.quantity}
-                              </span>
-                              <button
-                                onClick={() => {
-                                  updateQuantity(item.product.id, item.quantity + 1);
-                                }}
-                                className="px-2 py-1 text-wellness-charcoal/60 hover:text-wellness-navy hover:bg-wellness-gray-100 transition-colors"
-                                aria-label="Increase quantity"
-                              >
-                                <Plus size={12} />
-                              </button>
-                            </div>
-
-                            {/* Price */}
-                            <p className="text-sm font-bold text-wellness-navy">
-                              ₹{(item.product.price * item.quantity).toFixed(2)}
+                            <h4 className="text-xs font-bold text-red-800 uppercase tracking-wider mb-1">
+                              Stock Warning
+                            </h4>
+                            <p className="text-xs text-red-700 leading-relaxed font-medium">
+                              Some items in your cart are currently out of stock or exceed available
+                              inventory. Please adjust quantities before checkout.
                             </p>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  <div className="space-y-4">
+                    {cartItems.map((item) => {
+                      const stock =
+                        item.product.availableQty ??
+                        item.product.inventoryQty ??
+                        item.product.stockQty ??
+                        (item.product.stockStatus === 'out_of_stock' ? 0 : 100);
+                      const isItemOutOfStock =
+                        stock <= 0 || item.product.stockStatus === 'out_of_stock';
+                      const isExceedingStock = item.quantity > stock;
+
+                      return (
+                        <div
+                          key={item.product.id}
+                          className={`flex gap-4 p-4 rounded-xl border transition-all group ${
+                            isItemOutOfStock || isExceedingStock
+                              ? 'bg-red-50/50 border-red-200'
+                              : 'bg-white border-wellness-gray-100 hover:border-wellness-gray-200'
+                          }`}
+                        >
+                          {/* Image */}
+                          <div className="relative w-20 h-20 bg-wellness-gray-50 rounded-lg overflow-hidden shrink-0 border border-wellness-gray-100">
+                            <Image
+                              src={item.product.image}
+                              alt={item.product.name}
+                              fill
+                              className={`object-cover ${isItemOutOfStock ? 'grayscale-[50%]' : ''}`}
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+
+                          {/* Details */}
+                          <div className="flex-grow flex flex-col justify-between min-w-0">
+                            <div>
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <h4 className="font-heading font-bold text-wellness-navy text-sm truncate group-hover:text-wellness-green transition-colors">
+                                  <Link
+                                    href={`/products/${item.product.id}`}
+                                    onClick={() => {
+                                      setCartOpen(false);
+                                    }}
+                                  >
+                                    {item.product.name}
+                                  </Link>
+                                </h4>
+                                <button
+                                  onClick={() => {
+                                    void removeFromCart(item.product.id);
+                                  }}
+                                  className="text-wellness-charcoal/40 hover:text-red-500 transition-colors p-1"
+                                  aria-label="Remove item"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[10px] font-bold text-wellness-navy bg-wellness-gray-100 px-2 py-0.5 rounded uppercase tracking-wider">
+                                  {item.product.type}
+                                </span>
+                                {isItemOutOfStock ? (
+                                  <span className="text-[10px] font-extrabold text-red-600 bg-red-100 px-2 py-0.5 rounded uppercase tracking-wider">
+                                    Out of Stock
+                                  </span>
+                                ) : isExceedingStock ? (
+                                  <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100 px-2 py-0.5 rounded uppercase tracking-wider">
+                                    Max {stock} Available
+                                  </span>
+                                ) : stock <= 5 ? (
+                                  <span className="text-[10px] font-extrabold text-amber-600 bg-amber-50 px-2 py-0.5 rounded uppercase tracking-wider">
+                                    Only {stock} left
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-auto">
+                              {/* Quantity Controls */}
+                              <div className="flex items-center border border-wellness-gray-200 rounded bg-wellness-white">
+                                <button
+                                  onClick={() => {
+                                    void updateQuantity(item.product.id, item.quantity - 1);
+                                  }}
+                                  className="px-2 py-1 text-wellness-charcoal/60 hover:text-wellness-navy hover:bg-wellness-gray-100 transition-colors"
+                                  aria-label="Decrease quantity"
+                                >
+                                  <Minus size={12} />
+                                </button>
+                                <span className="px-3 text-xs font-bold text-wellness-navy min-w-[20px] text-center">
+                                  {item.quantity}
+                                </span>
+                                <button
+                                  disabled={isItemOutOfStock || item.quantity >= stock}
+                                  onClick={() => {
+                                    void updateQuantity(item.product.id, item.quantity + 1);
+                                  }}
+                                  className={`px-2 py-1 text-wellness-charcoal/60 hover:text-wellness-navy hover:bg-wellness-gray-100 transition-colors ${
+                                    isItemOutOfStock || item.quantity >= stock
+                                      ? 'opacity-30 cursor-not-allowed'
+                                      : ''
+                                  }`}
+                                  aria-label="Increase quantity"
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              </div>
+
+                              {/* Price */}
+                              <p className="text-sm font-bold text-wellness-navy">
+                                ₹{(item.product.price * item.quantity).toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -214,41 +277,73 @@ export default function CartDrawer() {
             {/* Footer Summary & Checkout */}
             {cartItems.length > 0 && (
               <div className="p-6 border-t border-wellness-gray-100 bg-wellness-white">
-                <div className="space-y-2 mb-6">
-                  <div className="flex justify-between text-sm text-wellness-charcoal/70 font-semibold">
-                    <span>Subtotal</span>
-                    <span className="text-wellness-navy">₹{cartSubtotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-wellness-charcoal/50 font-medium">
-                    <span>Shipping & taxes</span>
-                    <span>Calculated at checkout</span>
-                  </div>
-                  <div className="pt-2 border-t border-wellness-gray-200 flex justify-between font-heading font-bold text-base text-wellness-navy">
-                    <span>Estimated Total</span>
-                    <span>₹{cartSubtotal.toFixed(2)}</span>
-                  </div>
-                </div>
+                {(() => {
+                  const hasOutOfStockInCart = cartItems.some((item) => {
+                    const stock =
+                      item.product.availableQty ??
+                      item.product.inventoryQty ??
+                      item.product.stockQty ??
+                      (item.product.stockStatus === 'out_of_stock' ? 0 : 100);
+                    return (
+                      stock <= 0 ||
+                      item.product.stockStatus === 'out_of_stock' ||
+                      item.quantity > stock
+                    );
+                  });
 
-                <div className="space-y-3">
-                  <Link
-                    href="/order"
-                    onClick={() => {
-                      setCartOpen(false);
-                    }}
-                    className="w-full bg-wellness-green hover:bg-wellness-navy text-white py-4 px-6 rounded-md font-semibold flex items-center justify-center gap-2 transition-all shadow-md group"
-                  >
-                    <span>Proceed to Checkout</span>
-                    <ArrowRight
-                      size={18}
-                      className="group-hover:translate-x-1 transition-transform"
-                    />
-                  </Link>
+                  return (
+                    <>
+                      <div className="space-y-2 mb-6">
+                        <div className="flex justify-between text-sm text-wellness-charcoal/70 font-semibold">
+                          <span>Subtotal</span>
+                          <span className="text-wellness-navy">₹{cartSubtotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-wellness-charcoal/50 font-medium">
+                          <span>Shipping & taxes</span>
+                          <span>Calculated at checkout</span>
+                        </div>
+                        <div className="pt-2 border-t border-wellness-gray-200 flex justify-between font-heading font-bold text-base text-wellness-navy">
+                          <span>Estimated Total</span>
+                          <span>₹{cartSubtotal.toFixed(2)}</span>
+                        </div>
+                      </div>
 
-                  <div className="flex items-center justify-center gap-1.5 text-[10px] text-wellness-charcoal/40 font-bold uppercase tracking-wider">
-                    <Lock size={12} />
-                    <span>Secure Checkout</span>
-                  </div>
-                </div>
+                      <div className="space-y-3">
+                        <Link
+                          href={hasOutOfStockInCart ? '#' : '/order'}
+                          onClick={(e) => {
+                            if (hasOutOfStockInCart) {
+                              e.preventDefault();
+                              alert(
+                                'Please remove or reduce out-of-stock items before proceeding to checkout.',
+                              );
+                              return;
+                            }
+                            setCartOpen(false);
+                          }}
+                          className={`w-full py-4 px-6 rounded-md font-semibold flex items-center justify-center gap-2 transition-all shadow-md group ${
+                            hasOutOfStockInCart
+                              ? 'bg-wellness-gray-200 text-wellness-charcoal/40 border border-wellness-gray-300 cursor-not-allowed'
+                              : 'bg-wellness-green hover:bg-wellness-navy text-white cursor-pointer'
+                          }`}
+                        >
+                          <span>
+                            {hasOutOfStockInCart ? 'Fix Out of Stock Items' : 'Proceed to Checkout'}
+                          </span>
+                          <ArrowRight
+                            size={18}
+                            className="group-hover:translate-x-1 transition-transform"
+                          />
+                        </Link>
+
+                        <div className="flex items-center justify-center gap-1.5 text-[10px] text-wellness-charcoal/40 font-bold uppercase tracking-wider">
+                          <Lock size={12} />
+                          <span>Secure Checkout</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </motion.div>
