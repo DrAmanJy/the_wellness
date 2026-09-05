@@ -39,6 +39,9 @@ type ApiCartResponseItem = {
     primaryImage?: string;
     type?: string;
     description?: string;
+    stockQty?: number;
+    availableQty?: number;
+    stockStatus?: string;
   } | null;
 };
 
@@ -136,9 +139,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                   ? ('Prescription (Rx)' as const)
                   : ('Over-The-Counter (OTC)' as const));
 
+              const itemStockQty =
+                item.product?.stockQty ??
+                item.product?.availableQty ??
+                matchedProduct?.stockQty ??
+                matchedProduct?.availableQty ??
+                100;
+              const itemAvailableQty =
+                item.product?.availableQty ??
+                item.product?.stockQty ??
+                matchedProduct?.availableQty ??
+                matchedProduct?.stockQty ??
+                100;
+              const itemStockStatus =
+                item.product?.stockStatus ?? (itemAvailableQty <= 0 ? 'out_of_stock' : 'in_stock');
+
               return {
                 product: matchedProduct
-                  ? { ...matchedProduct, price: finalPrice }
+                  ? {
+                      ...matchedProduct,
+                      price: finalPrice,
+                      stockQty: itemStockQty,
+                      availableQty: itemAvailableQty,
+                      stockStatus: itemStockStatus as 'in_stock' | 'out_of_stock' | 'discontinued',
+                    }
                   : {
                       id: item.productId,
                       name: item.product?.name || 'Therapeutic Product',
@@ -151,6 +175,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                       description: item.product?.description || '',
                       ingredients: [],
                       benefits: [],
+                      stockQty: itemStockQty,
+                      availableQty: itemAvailableQty,
+                      stockStatus: itemStockStatus as 'in_stock' | 'out_of_stock' | 'discontinued',
                     },
                 quantity: item.quantity,
               };
@@ -290,6 +317,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         );
         quantity = stock;
       }
+    }
+
+    if (quantity <= 0) {
+      await removeFromCart(productId);
+      return;
     }
 
     setCartItems((prevItems) =>

@@ -9,6 +9,9 @@ export type CartItemProductDTO = {
   type?: string | null | undefined;
   categoryName?: string | null | undefined;
   description?: string | null | undefined;
+  stockQty?: number | null | undefined;
+  availableQty?: number | null | undefined;
+  stockStatus?: 'in_stock' | 'out_of_stock' | 'discontinued' | null | undefined;
 };
 
 export type CartItemDTO = {

@@ -14,6 +14,8 @@ import {
   orderStatusHistories,
   eq,
   and,
+  gte,
+  sql,
   desc,
   asc,
 } from '@wellness/db';
@@ -39,281 +41,246 @@ export class OrderService {
     const shippingAmount = input.shippingAmount ?? (calculatedSubtotal > 1000 ? 0 : 99);
     const totalAmount = input.totalAmount ?? calculatedSubtotal + taxAmount + shippingAmount;
 
-    // 2. Validate stock availability for all items before creating order
-    for (const item of itemsInput) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        item.productId,
-      );
-      let existingProd = null;
-
-      if (isUuid) {
-        const [prod] = await db
-          .select()
-          .from(products)
-          .where(eq(products.id, item.productId))
-          .limit(1);
-        if (prod) existingProd = prod;
-      }
-
-      if (!existingProd && item.productName) {
-        const [prodByName] = await db
-          .select()
-          .from(products)
-          .where(eq(products.name, item.productName))
-          .limit(1);
-        if (prodByName) existingProd = prodByName;
-      }
-
-      if (existingProd) {
-        const [inv] = await db
-          .select()
-          .from(inventory)
-          .where(eq(inventory.productId, existingProd.id))
-          .limit(1);
-
-        const currentAvail = inv ? inv.availableQty : existingProd.stockQty;
-        const currentStock = existingProd.stockQty;
-
-        if (existingProd.stockStatus === 'out_of_stock' || currentStock <= 0 || currentAvail <= 0) {
-          throw new BadRequestError(
-            `Product "${item.productName || existingProd.name}" is currently out of stock.`,
-          );
-        }
-
-        if (item.quantity > currentAvail || item.quantity > currentStock) {
-          const maxAllowed = Math.max(0, Math.min(currentAvail, currentStock));
-          throw new BadRequestError(
-            `Insufficient stock for "${item.productName || existingProd.name}". Only ${String(maxAllowed)} item(s) available.`,
-          );
-        }
-      }
-    }
-
-    // 3. Generate unique tracking number
+    // 2. Generate unique tracking number
     const randomSuffix = Math.floor(100000 + Math.random() * 900000).toString();
     const trackingNumber = `TW-${Date.now().toString().slice(-6)}-${randomSuffix}`;
 
-    // 4. Insert order record
-    const [newOrder] = await db
-      .insert(orders)
-      .values({
-        userId: userId || null,
+    // 3. Execute checkout atomically inside a transaction
+    const newOrderId = await db.transaction(async (tx) => {
+      // 4. Insert order record
+      const [newOrder] = await tx
+        .insert(orders)
+        .values({
+          userId: userId || null,
+          status: 'pending',
+          trackingNumber,
+          subtotal: calculatedSubtotal,
+          discountAmount: 0,
+          shippingAmount,
+          taxAmount,
+          totalAmount,
+          price: totalAmount,
+        })
+        .returning();
+
+      if (!newOrder) {
+        throw new Error('Failed to create order in database');
+      }
+
+      // Record initial status history entry
+      await tx.insert(orderStatusHistories).values({
+        orderId: newOrder.id,
         status: 'pending',
-        trackingNumber,
-        subtotal: calculatedSubtotal,
-        discountAmount: 0,
-        shippingAmount,
-        taxAmount,
-        totalAmount,
-        price: totalAmount,
-      })
-      .returning();
+        comment: 'Order created & pending confirmation',
+      });
 
-    if (!newOrder) {
-      throw new Error('Failed to create order in database');
-    }
+      // 5. Insert shipping address record
+      await tx.insert(orderShippingAddresses).values({
+        orderId: newOrder.id,
+        houseNumber: shippingAddress.houseNumber || null,
+        street: `${shippingAddress.fullName} | ${shippingAddress.phone} | ${shippingAddress.street}`,
+        city: shippingAddress.city,
+        state: shippingAddress.state,
+        pincode: shippingAddress.pincode,
+        country: shippingAddress.country || 'India',
+      });
 
-    // Record initial status history entry
-    await db.insert(orderStatusHistories).values({
-      orderId: newOrder.id,
-      status: 'pending',
-      comment: 'Order created & pending confirmation',
-    });
+      // 6. Insert order items & atomically update inventory / product stock
+      for (const item of itemsInput) {
+        const itemTotal = Math.round(item.unitPrice * item.quantity);
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          item.productId,
+        );
 
-    // 5. Insert shipping address record
-    await db.insert(orderShippingAddresses).values({
-      orderId: newOrder.id,
-      houseNumber: shippingAddress.houseNumber || null,
-      street: `${shippingAddress.fullName} | ${shippingAddress.phone} | ${shippingAddress.street}`,
-      city: shippingAddress.city,
-      state: shippingAddress.state,
-      pincode: shippingAddress.pincode,
-      country: shippingAddress.country || 'India',
-    });
+        let targetProduct: typeof products.$inferSelect | null = null;
 
-    // 6. Insert order items & update inventory / product stock
-    for (const item of itemsInput) {
-      const itemTotal = Math.round(item.unitPrice * item.quantity);
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        item.productId,
-      );
-
-      let targetProduct: typeof products.$inferSelect | null = null;
-
-      if (isUuid) {
-        const [existing] = await db
-          .select()
-          .from(products)
-          .where(eq(products.id, item.productId))
-          .limit(1);
-        if (existing) {
-          targetProduct = existing;
+        if (isUuid) {
+          const [existing] = await tx
+            .select()
+            .from(products)
+            .where(eq(products.id, item.productId))
+            .limit(1);
+          if (existing) {
+            targetProduct = existing;
+          }
         }
-      }
 
-      if (!targetProduct && item.productName) {
-        const [existingByName] = await db
-          .select()
-          .from(products)
-          .where(eq(products.name, item.productName))
-          .limit(1);
-        if (existingByName) {
-          targetProduct = existingByName;
+        if (!targetProduct && item.productName) {
+          const [existingByName] = await tx
+            .select()
+            .from(products)
+            .where(eq(products.name, item.productName))
+            .limit(1);
+          if (existingByName) {
+            targetProduct = existingByName;
+          }
         }
-      }
 
-      if (!targetProduct) {
-        const [firstProd] = await db.select().from(products).limit(1);
-        if (firstProd) {
-          targetProduct = firstProd;
+        if (!targetProduct) {
+          const [firstProd] = await tx.select().from(products).limit(1);
+          if (firstProd) {
+            targetProduct = firstProd;
+          }
         }
-      }
 
-      // If no matching product exists in DB at all, create a product record
-      if (!targetProduct) {
-        const [createdProd] = await db
-          .insert(products)
-          .values({
-            name: item.productName || 'Therapeutic Formulation',
-            description: 'Healthcare formulation item',
-            sellingPrice: Math.round(item.unitPrice).toString(),
-            mrp: Math.round(item.unitPrice).toString(),
-            stockQty: 100,
-            stockStatus: 'in_stock',
+        // If no matching product exists in DB at all, create a product record
+        if (!targetProduct) {
+          const [createdProd] = await tx
+            .insert(products)
+            .values({
+              name: item.productName || 'Therapeutic Formulation',
+              description: 'Healthcare formulation item',
+              sellingPrice: Math.round(item.unitPrice).toString(),
+              mrp: Math.round(item.unitPrice).toString(),
+              stockQty: 100,
+              stockStatus: 'in_stock',
+            })
+            .returning();
+
+          if (createdProd) {
+            targetProduct = createdProd;
+            await tx.insert(inventory).values({
+              productId: targetProduct.id,
+              availableQty: 100,
+              reservedQty: 0,
+            });
+          }
+        }
+
+        if (!targetProduct) {
+          throw new BadRequestError(`Product "${item.productName || item.productId}" not found.`);
+        }
+
+        // Atomic conditional update on products: only succeeds if sufficient quantity remains
+        const updatedProducts = await tx
+          .update(products)
+          .set({
+            stockQty: sql`${products.stockQty} - ${item.quantity}`,
+            stockStatus: sql`CASE WHEN ${products.stockQty} - ${item.quantity} = 0 THEN 'out_of_stock'::stock_status ELSE ${products.stockStatus} END`,
+            lastUpdated: new Date(),
           })
+          .where(and(eq(products.id, targetProduct.id), gte(products.stockQty, item.quantity)))
           .returning();
 
-        if (createdProd) {
-          targetProduct = createdProd;
-          await db.insert(inventory).values({
+        if (updatedProducts.length === 0) {
+          throw new BadRequestError(
+            `Insufficient stock for "${item.productName || targetProduct.name}".`,
+          );
+        }
+
+        // Insert order_item entry
+        await tx.insert(orderItems).values({
+          orderId: newOrder.id,
+          productId: targetProduct.id,
+          productName: item.productName || targetProduct.name || 'Therapeutic Product',
+          unitPrice: Math.round(item.unitPrice),
+          quantity: item.quantity,
+          totalAmount: itemTotal,
+        });
+
+        // Insert inventory_transaction entry
+        await tx.insert(inventoryTransactions).values({
+          productId: targetProduct.id,
+          orderId: newOrder.id,
+          type: 'sale',
+          quantity: item.quantity,
+        });
+
+        // Atomic conditional update on inventory
+        const [existingInv] = await tx
+          .select()
+          .from(inventory)
+          .where(eq(inventory.productId, targetProduct.id))
+          .limit(1);
+
+        if (existingInv) {
+          const updatedInv = await tx
+            .update(inventory)
+            .set({
+              availableQty: sql`${inventory.availableQty} - ${item.quantity}`,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(inventory.productId, targetProduct.id),
+                gte(inventory.availableQty, item.quantity),
+              ),
+            )
+            .returning();
+
+          if (updatedInv.length === 0) {
+            throw new BadRequestError(
+              `Insufficient stock for "${item.productName || targetProduct.name}".`,
+            );
+          }
+        } else {
+          await tx.insert(inventory).values({
             productId: targetProduct.id,
-            availableQty: 100,
+            availableQty: updatedProducts[0]?.stockQty ?? 0,
             reservedQty: 0,
           });
         }
       }
 
-      if (targetProduct) {
-        try {
-          // 1. Insert order_item entry
-          await db.insert(orderItems).values({
-            orderId: newOrder.id,
-            productId: targetProduct.id,
-            productName: item.productName || targetProduct.name || 'Therapeutic Product',
-            unitPrice: Math.round(item.unitPrice),
-            quantity: item.quantity,
-            totalAmount: itemTotal,
-          });
+      // 7. Insert payment record & invoice entry
+      const [paymentRecord] = await tx
+        .insert(payments)
+        .values({
+          orderId: newOrder.id,
+          transactionId:
+            paymentInput.transactionId ||
+            paymentInput.razorpayPaymentId ||
+            `TXN_${String(Date.now())}_${Math.random().toString(36).substring(2, 7)}`,
+          provider: paymentInput.provider || 'razorpay',
+          amount: Math.round(paymentInput.amount || totalAmount),
+          currency: 'INR',
+          status: 'captured',
+          paymentMethod: paymentInput.paymentMethod || 'online',
+        })
+        .returning();
 
-          // 2. Insert inventory_transaction entry
-          await db.insert(inventoryTransactions).values({
-            productId: targetProduct.id,
-            orderId: newOrder.id,
-            type: 'sale',
-            quantity: item.quantity,
-          });
-
-          // 3. Decrement stockQty & update stockStatus in products table
-          const updatedStockQty = Math.max(0, targetProduct.stockQty - item.quantity);
-          const updatedStockStatus =
-            updatedStockQty === 0 ? 'out_of_stock' : targetProduct.stockStatus;
-
-          await db
-            .update(products)
-            .set({
-              stockQty: updatedStockQty,
-              stockStatus: updatedStockStatus,
-              lastUpdated: new Date(),
-            })
-            .where(eq(products.id, targetProduct.id));
-
-          // 4. Update inventory availableQty
-          const [currentInv] = await db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.productId, targetProduct.id))
-            .limit(1);
-
-          if (currentInv) {
-            await db
-              .update(inventory)
-              .set({
-                availableQty: Math.max(0, currentInv.availableQty - item.quantity),
-                updatedAt: new Date(),
-              })
-              .where(eq(inventory.id, currentInv.id));
-          } else {
-            await db.insert(inventory).values({
-              productId: targetProduct.id,
-              availableQty: Math.max(0, 100 - item.quantity),
-              reservedQty: 0,
-            });
-          }
-        } catch (err) {
-          console.error(
-            `Failed to insert order item or inventory transaction for ${item.productId}:`,
-            err,
-          );
-        }
+      if (paymentRecord) {
+        // Insert invoice entry
+        await tx.insert(invoices).values({
+          orderId: newOrder.id,
+          paymentId: paymentRecord.id,
+        });
       }
-    }
 
-    // 6. Insert payment record & invoice entry
-    const [paymentRecord] = await db
-      .insert(payments)
-      .values({
-        orderId: newOrder.id,
-        transactionId:
-          paymentInput.transactionId ||
-          paymentInput.razorpayPaymentId ||
-          `TXN_${String(Date.now())}_${Math.random().toString(36).substring(2, 7)}`,
-        provider: paymentInput.provider || 'razorpay',
-        amount: Math.round(paymentInput.amount || totalAmount),
-        currency: 'INR',
-        status: 'captured',
-        paymentMethod: paymentInput.paymentMethod || 'online',
-      })
-      .returning();
-
-    if (paymentRecord) {
-      // Insert invoice entry
-      await db.insert(invoices).values({
-        orderId: newOrder.id,
-        paymentId: paymentRecord.id,
-      });
-    }
-
-    // 7. Clear active cart if cartId or userId is provided
-    try {
-      if (cartId) {
-        await db
-          .update(carts)
-          .set({ status: 'converted', updatedAt: new Date() })
-          .where(eq(carts.id, cartId));
-
-        await db.delete(cartItems).where(eq(cartItems.cartId, cartId));
-      } else if (userId) {
-        const [activeCart] = await db
-          .select({ id: carts.id })
-          .from(carts)
-          .where(and(eq(carts.userId, userId), eq(carts.status, 'active')))
-          .limit(1);
-
-        if (activeCart) {
-          await db
+      // 8. Clear active cart if cartId or userId is provided
+      try {
+        if (cartId) {
+          await tx
             .update(carts)
             .set({ status: 'converted', updatedAt: new Date() })
-            .where(eq(carts.id, activeCart.id));
+            .where(eq(carts.id, cartId));
 
-          await db.delete(cartItems).where(eq(cartItems.cartId, activeCart.id));
+          await tx.delete(cartItems).where(eq(cartItems.cartId, cartId));
+        } else if (userId) {
+          const [activeCart] = await tx
+            .select({ id: carts.id })
+            .from(carts)
+            .where(and(eq(carts.userId, userId), eq(carts.status, 'active')))
+            .limit(1);
+
+          if (activeCart) {
+            await tx
+              .update(carts)
+              .set({ status: 'converted', updatedAt: new Date() })
+              .where(eq(carts.id, activeCart.id));
+
+            await tx.delete(cartItems).where(eq(cartItems.cartId, activeCart.id));
+          }
         }
+      } catch (err) {
+        console.error('Error converting/clearing cart after order:', err);
       }
-    } catch (err) {
-      console.error('Error converting/clearing cart after order:', err);
-    }
 
-    // 8. Fetch complete created order details
-    return this.getOrderById(newOrder.id);
+      return newOrder.id;
+    });
+
+    // 9. Fetch complete created order details
+    return this.getOrderById(newOrderId);
   }
 
   async getOrderById(orderId: string, userId?: string, isAdmin?: boolean): Promise<OrderDTO> {

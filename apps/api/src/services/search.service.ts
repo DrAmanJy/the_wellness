@@ -1,4 +1,4 @@
-import { db, products, categories, or, ilike } from '@wellness/db';
+import { db, products, categories, or, ilike, and, eq } from '@wellness/db';
 
 import { toProductListDTO, toSearchSuggestionDTO } from './product.mapper';
 
@@ -19,7 +19,12 @@ export class SearchService {
     const foundCategories = await db
       .select()
       .from(categories)
-      .where(or(ilike(categories.name, q), ilike(categories.description, q)))
+      .where(
+        and(
+          eq(categories.isActive, true),
+          or(ilike(categories.name, q), ilike(categories.description, q)),
+        ),
+      )
       .limit(limit);
 
     const mappedProducts = foundProducts.map((p) => toProductListDTO(p));
@@ -54,7 +59,12 @@ export class SearchService {
         label: categories.name,
       })
       .from(categories)
-      .where(or(ilike(categories.name, q), ilike(categories.description, q)))
+      .where(
+        and(
+          eq(categories.isActive, true),
+          or(ilike(categories.name, q), ilike(categories.description, q)),
+        ),
+      )
       .limit(limit);
 
     const suggestions = [

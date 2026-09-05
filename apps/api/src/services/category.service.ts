@@ -1,4 +1,4 @@
-import { db, categories, eq, asc } from '@wellness/db';
+import { db, categories, eq, and, asc } from '@wellness/db';
 import { NotFoundError, ConflictError } from '@wellness/utils';
 
 import { toCategoryListDTO, toCategoryDetailDTO, toCategoryMutationDTO } from './category.mapper';
@@ -15,7 +15,11 @@ export class CategoryService {
   }
 
   async getCategoryBySlug(slug: string) {
-    const [category] = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
+    const [category] = await db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.slug, slug), eq(categories.isActive, true)))
+      .limit(1);
 
     if (!category) {
       throw new NotFoundError('Category not found');

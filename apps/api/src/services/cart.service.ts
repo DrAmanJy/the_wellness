@@ -1,4 +1,4 @@
-import { db, carts, cartItems, products, eq, and, sql } from '@wellness/db';
+import { db, carts, cartItems, products, inventory, eq, and, sql } from '@wellness/db';
 import { NotFoundError, BadRequestError } from '@wellness/utils';
 
 import { toCartDTO } from './cart.mapper';
@@ -49,9 +49,13 @@ export class CartService {
         sellingPrice: products.sellingPrice,
         mrp: products.mrp,
         description: products.description,
+        stockQty: products.stockQty,
+        stockStatus: products.stockStatus,
+        availableQty: inventory.availableQty,
       })
       .from(cartItems)
       .leftJoin(products, eq(cartItems.productId, products.id))
+      .leftJoin(inventory, eq(products.id, inventory.productId))
       .where(eq(cartItems.cartId, cart.id));
 
     return toCartDTO({

@@ -160,7 +160,7 @@ export default function CartDrawer() {
                         item.product.availableQty ??
                         item.product.inventoryQty ??
                         item.product.stockQty ??
-                        0;
+                        (item.product.stockStatus === 'out_of_stock' ? 0 : 100);
                       const isItemOutOfStock =
                         stock <= 0 || item.product.stockStatus === 'out_of_stock';
                       const isExceedingStock = item.quantity > stock;
@@ -283,7 +283,7 @@ export default function CartDrawer() {
                       item.product.availableQty ??
                       item.product.inventoryQty ??
                       item.product.stockQty ??
-                      0;
+                      (item.product.stockStatus === 'out_of_stock' ? 0 : 100);
                     return (
                       stock <= 0 ||
                       item.product.stockStatus === 'out_of_stock' ||

@@ -1,4 +1,4 @@
-import type { CartDTO, CartItemDTO } from '@wellness/contracts';
+import type { CartDTO, CartItemDTO, CartItemProductDTO } from '@wellness/contracts';
 
 type CartRawInput = {
   id: string;
@@ -14,6 +14,9 @@ type CartRawInput = {
     sellingPrice?: string | null;
     mrp?: string | null;
     description?: string | null;
+    stockQty?: number | null;
+    stockStatus?: CartItemProductDTO['stockStatus'];
+    availableQty?: number | null;
   }>;
 };
 
@@ -37,6 +40,9 @@ export function toCartDTO(cartRaw: CartRawInput): CartDTO {
             price: priceNum,
             mrp: item.mrp ?? undefined,
             description: item.description ?? undefined,
+            stockQty: item.stockQty ?? undefined,
+            availableQty: item.availableQty ?? item.stockQty ?? undefined,
+            stockStatus: item.stockStatus ?? undefined,
           }
         : null,
     };

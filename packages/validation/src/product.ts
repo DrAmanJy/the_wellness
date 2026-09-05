@@ -18,6 +18,7 @@ const BaseProductObject = z
       .max(255)
       .regex(/^[^<>]*$/, 'HTML tags are not allowed'),
     description: z.string().trim().max(10000).nullable().optional(),
+    ingredients: z.union([z.array(z.string()), JsonValueSchema]).optional(),
     ingrediants: z.union([z.array(z.string()), JsonValueSchema]).optional(),
     tags: z.array(z.string()).optional(),
     sellingPrice: PriceSchema.default(0),

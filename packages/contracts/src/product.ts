@@ -47,7 +47,8 @@ export type ProductMutationDTO = {
   id: string;
   name: string;
   description: string | null;
-  ingrediants: JsonValue | null;
+  ingredients: JsonValue | null;
+  ingrediants?: JsonValue | null;
   tags: string[] | null;
   sellingPrice: string;
   mrp: string;
@@ -69,7 +70,8 @@ export type ProductDetailDTO = {
   id: string;
   name: string;
   description: string | null;
-  ingrediants: JsonValue | null;
+  ingredients: JsonValue | null;
+  ingrediants?: JsonValue | null;
   tags: string[] | null;
   sellingPrice: string;
   mrp: string;

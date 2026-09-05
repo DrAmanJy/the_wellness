@@ -33,7 +33,12 @@ export function toProductMutationDTO(
     id: product.id,
     name: product.name,
     description: product.description,
-    ingrediants: product.ingrediants as JsonValue | null,
+    ingredients: (product.ingredients ??
+      (product as { ingrediants?: unknown }).ingrediants ??
+      null) as JsonValue | null,
+    ingrediants: (product.ingredients ??
+      (product as { ingrediants?: unknown }).ingrediants ??
+      null) as JsonValue | null,
     tags: product.tags,
     sellingPrice: product.sellingPrice,
     mrp: product.mrp,

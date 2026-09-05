@@ -17,6 +17,7 @@ import {
 } from '@wellness/validation';
 
 import { requireAuth } from '../middleware/auth.middleware';
+import { resolveRoles, requireRole } from '../middleware/authorization.middleware';
 import { promotionService } from '../services/promotion.service';
 
 const router = Router();
@@ -45,6 +46,8 @@ bindProcedure(
   router,
   createPromotionProcedure,
   requireAuth,
+  resolveRoles,
+  requireRole('employee', 'admin'),
   asyncHandler(async (req, res) => {
     const input = createPromotionSchema.parse(req.body);
     const created = await promotionService.createPromotion(input);
@@ -56,6 +59,8 @@ bindProcedure(
   router,
   updatePromotionProcedure,
   requireAuth,
+  resolveRoles,
+  requireRole('employee', 'admin'),
   asyncHandler(async (req, res) => {
     const { id } = promotionIdParamSchema.parse(req.params);
     const input = updatePromotionSchema.parse(req.body);
@@ -68,6 +73,8 @@ bindProcedure(
   router,
   togglePromotionStatusProcedure,
   requireAuth,
+  resolveRoles,
+  requireRole('employee', 'admin'),
   asyncHandler(async (req, res) => {
     const { id } = promotionIdParamSchema.parse(req.params);
     const updated = await promotionService.togglePromotionStatus(id);
@@ -79,6 +86,8 @@ bindProcedure(
   router,
   deletePromotionProcedure,
   requireAuth,
+  resolveRoles,
+  requireRole('employee', 'admin'),
   asyncHandler(async (req, res) => {
     const { id } = promotionIdParamSchema.parse(req.params);
     const result = await promotionService.deletePromotion(id);

@@ -40,27 +40,7 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 
-DROP TABLE IF EXISTS "cart_item" CASCADE;
-DROP TABLE IF EXISTS "cart" CASCADE;
-DROP TABLE IF EXISTS "inventory_transaction" CASCADE;
-DROP TABLE IF EXISTS "inventory" CASCADE;
-DROP TABLE IF EXISTS "refund" CASCADE;
-DROP TABLE IF EXISTS "invoice" CASCADE;
-DROP TABLE IF EXISTS "payment" CASCADE;
-DROP TABLE IF EXISTS "order_status_history" CASCADE;
-DROP TABLE IF EXISTS "order_item" CASCADE;
-DROP TABLE IF EXISTS "order_shipping_address" CASCADE;
-DROP TABLE IF EXISTS "order" CASCADE;
-DROP TABLE IF EXISTS "product" CASCADE;
-DROP TABLE IF EXISTS "category" CASCADE;
-DROP TABLE IF EXISTS "shipping_address" CASCADE;
-DROP TABLE IF EXISTS "customer" CASCADE;
-DROP TABLE IF EXISTS "product_images" CASCADE;
-DROP TABLE IF EXISTS "product_variants" CASCADE;
-DROP TABLE IF EXISTS "product_categories" CASCADE;
-DROP TABLE IF EXISTS "products" CASCADE;
-DROP TABLE IF EXISTS "categories" CASCADE;
-
+-- Ensure tables are created without dropping existing ones prematurely
 CREATE TABLE IF NOT EXISTS "customer" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(255),
@@ -99,7 +79,7 @@ CREATE TABLE IF NOT EXISTS "product" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(255) NOT NULL,
 	"description" text,
-	"ingrediants" jsonb,
+	"ingredients" jsonb,
 	"tags" jsonb,
 	"selling_price" numeric(10, 2) DEFAULT '0.00' NOT NULL,
 	"mrp" numeric(10, 2) DEFAULT '0.00' NOT NULL,
@@ -230,3 +210,57 @@ CREATE TABLE IF NOT EXISTS "refund" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
+
+-- Staged copy: preserve existing business data from legacy tables if they exist
+DO $$
+BEGIN
+  -- 1. Migrate categories -> category
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'categories') THEN
+    INSERT INTO "category" ("name", "description", "slug", "is_active", "created_at", "updated_at")
+    SELECT "name", "description", "slug", "is_active", "created_at", "updated_at"
+    FROM "categories"
+    ON CONFLICT ("slug") DO UPDATE SET
+      "name" = EXCLUDED."name",
+      "description" = EXCLUDED."description",
+      "is_active" = EXCLUDED."is_active",
+      "updated_at" = EXCLUDED."updated_at";
+  END IF;
+
+  -- 2. Migrate products & product_variants -> product
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'products') THEN
+    -- If column was ingrediants in legacy product table, handle safely
+    INSERT INTO "product" (
+      "name", "description", "ingredients", "tags", "selling_price", "mrp", "stock_qty", "category_id", "is_featured"
+    )
+    SELECT
+      p.name,
+      p.description,
+      p.ingredients,
+      p.tags,
+      COALESCE((SELECT pv.price FROM "product_variants" pv WHERE pv.product_id = p.id ORDER BY pv.created_at LIMIT 1), '0.00'::numeric),
+      COALESCE((SELECT pv.compare_at_price FROM "product_variants" pv WHERE pv.product_id = p.id ORDER BY pv.created_at LIMIT 1), '0.00'::numeric),
+      0,
+      c.id,
+      p.is_featured
+    FROM "products" p
+    LEFT JOIN "categories" old_c ON old_c.id = p.category_primary_id
+    LEFT JOIN "category" c ON c.slug = old_c.slug
+    ON CONFLICT DO NOTHING;
+  END IF;
+
+  -- 3. If product table has older 'ingrediants' column, rename it to 'ingredients'
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'product' AND column_name = 'ingrediants') THEN
+    ALTER TABLE "product" RENAME COLUMN "ingrediants" TO "ingredients";
+  END IF;
+END $$;
+
+-- Drop legacy pre-refactor tables now that data has been safely migrated
+DROP TABLE IF EXISTS "product_images" CASCADE;
+DROP TABLE IF EXISTS "product_variants" CASCADE;
+DROP TABLE IF EXISTS "product_categories" CASCADE;
+DROP TABLE IF EXISTS "products" CASCADE;
+DROP TABLE IF EXISTS "categories" CASCADE;
+DROP TABLE IF EXISTS "cart_items" CASCADE;
+DROP TABLE IF EXISTS "carts" CASCADE;
+DROP TABLE IF EXISTS "inventory_transactions" CASCADE;
+

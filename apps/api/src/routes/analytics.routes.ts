@@ -3,8 +3,13 @@ import { Router } from 'express';
 import { asyncHandler } from '@wellness/utils';
 
 import { analyticsController } from '../controllers/analytics.controller';
+import { requireAuth } from '../middleware/auth.middleware';
+import { resolveRoles, requireRole } from '../middleware/authorization.middleware';
 
 const router = Router();
+
+// Enforce admin authentication & authorization for all analytics routes
+router.use(requireAuth, resolveRoles, requireRole('admin'));
 
 // GET /api/analytics - Get real-time dashboard analytics & summary
 router.get(

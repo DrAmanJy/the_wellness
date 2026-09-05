@@ -19,7 +19,7 @@ export const products = pgTable('product', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
-  ingrediants: jsonb('ingrediants'),
+  ingredients: jsonb('ingredients'),
   tags: jsonb('tags').$type<string[]>(),
   sellingPrice: numeric('selling_price', { precision: 10, scale: 2 }).default('0.00').notNull(),
   mrp: numeric('mrp', { precision: 10, scale: 2 }).default('0.00').notNull(),

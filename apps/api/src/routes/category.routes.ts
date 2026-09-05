@@ -12,6 +12,7 @@ import { asyncHandler } from '@wellness/utils';
 
 import { categoryController } from '../controllers/category.controller';
 import { requireAuth } from '../middleware/auth.middleware';
+import { resolveRoles, requireRole } from '../middleware/authorization.middleware';
 
 const router = Router();
 
@@ -31,6 +32,8 @@ bindProcedure(
   router,
   createCategoryProcedure,
   requireAuth,
+  resolveRoles,
+  requireRole('employee', 'admin'),
   asyncHandler((req, res, next) => categoryController.createCategory(req, res, next)),
 );
 
@@ -38,6 +41,8 @@ bindProcedure(
   router,
   updateCategoryProcedure,
   requireAuth,
+  resolveRoles,
+  requireRole('employee', 'admin'),
   asyncHandler((req, res, next) => categoryController.updateCategory(req, res, next)),
 );
 
@@ -45,6 +50,8 @@ bindProcedure(
   router,
   deleteCategoryProcedure,
   requireAuth,
+  resolveRoles,
+  requireRole('employee', 'admin'),
   asyncHandler((req, res, next) => categoryController.deleteCategory(req, res, next)),
 );
 
