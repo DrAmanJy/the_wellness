@@ -2,8 +2,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { Request, Response, NextFunction } from 'express';
 
 import { auth } from '@wellness/auth';
-import { UnauthorizedError } from '@wellness/utils';
-import { asyncHandler } from '@wellness/utils';
+import { UnauthorizedError, asyncHandler } from '@wellness/utils';
 
 export interface AuthContext {
   userId: string;

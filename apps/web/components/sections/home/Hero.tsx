@@ -146,6 +146,7 @@ export default function Hero() {
                   src="https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&q=80&w=800"
                   alt="Premium Healthcare Vitamin Bottle"
                   fill
+                  sizes="(max-width: 768px) 100vw, 380px"
                   className="object-contain hover:scale-105 transition-transform duration-700"
                   priority
                   referrerPolicy="no-referrer"

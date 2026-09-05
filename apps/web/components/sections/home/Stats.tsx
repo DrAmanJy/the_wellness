@@ -22,7 +22,7 @@ export default function Stats() {
   useGSAP(
     () => {
       const ctx = gsap.context(() => {
-        const numbers = gsap.utils.toArray('.stat-value');
+        const numbers = gsap.utils.toArray<HTMLElement>('.stat-value');
 
         gsap.from('.stat-item', {
           scrollTrigger: {
@@ -36,7 +36,7 @@ export default function Stats() {
           ease: 'power3.out',
         });
 
-        numbers.forEach((num: any) => {
+        numbers.forEach((num) => {
           const targetValue = parseInt(num.getAttribute('data-value') || '0', 10);
 
           gsap.to(num, {
@@ -48,8 +48,8 @@ export default function Stats() {
             duration: 2,
             ease: 'power2.out',
             snap: { innerHTML: 1 },
-            onUpdate: function () {
-              num.innerHTML = Math.round(this.targets()[0].innerHTML);
+            onUpdate() {
+              num.innerHTML = String(Math.round(parseFloat(num.innerHTML) || 0));
             },
           });
         });

@@ -2,8 +2,6 @@ import React, { Suspense } from 'react';
 
 import ProductsClient from './ProductsClient';
 
-import { products } from '@/lib/products';
-
 export const metadata = {
   title: 'Our Products | The Wellness',
   description: 'Explore our premium healthcare and pharmaceutical products.',
@@ -18,7 +16,7 @@ export default function ProductsPage() {
         </div>
       }
     >
-      <ProductsClient initialProducts={products} />
+      <ProductsClient />
     </Suspense>
   );
 }

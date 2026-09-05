@@ -1,6 +1,7 @@
 'use client';
 
 import { useGSAP } from '@gsap/react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import gsap from 'gsap';
 import {
   MapPin,
@@ -13,6 +14,8 @@ import {
   FileText,
 } from 'lucide-react';
 import React, { useState, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 
 import DropdownField from '@/components/ui/DropdownField';
 
@@ -43,10 +46,45 @@ const inquiryOptions = [
   },
 ];
 
+const contactSchema = z.object({
+  firstName: z.string().trim().min(1, 'First name is required').max(100, 'First name is too long'),
+  lastName: z.string().trim().min(1, 'Last name is required').max(100, 'Last name is too long'),
+  email: z.string().trim().min(1, 'Email is required').email('Invalid email address format'),
+  company: z.string().trim().max(100, 'Company name is too long').optional(),
+  inquiryType: z.string().min(1, 'Inquiry type is required'),
+  message: z
+    .string()
+    .trim()
+    .min(10, 'Message must be at least 10 characters long')
+    .max(2000, 'Message is too long'),
+});
+
+type ContactFormData = z.infer<typeof contactSchema>;
+
 export default function ContactPage() {
   const container = useRef<HTMLDivElement>(null);
   const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success'>('idle');
-  const [selectedInquiryId, setSelectedInquiryId] = useState(inquiryOptions[0].id);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<ContactFormData>({
+    resolver: zodResolver(contactSchema),
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      email: '',
+      company: '',
+      inquiryType: inquiryOptions[0].id,
+      message: '',
+    },
+  });
+
+  const selectedInquiryId = watch('inquiryType');
 
   useGSAP(
     () => {
@@ -83,48 +121,32 @@ export default function ContactPage() {
     { scope: container },
   );
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const onSubmit = async (data: ContactFormData) => {
     setFormStatus('submitting');
 
-    const formData = new FormData(e.currentTarget);
-    const firstName = formData.get('firstName') as string;
-    const lastName = formData.get('lastName') as string;
-    const email = formData.get('email') as string;
-    const company = (formData.get('company') as string) || '';
     const selectedOption =
-      inquiryOptions.find((o) => o.id === selectedInquiryId) || inquiryOptions[0];
-    const inquiryType = selectedOption.label;
-    const message = formData.get('message') as string;
+      inquiryOptions.find((o) => o.id === data.inquiryType) || inquiryOptions[0];
 
-    // Simulate API call and save to localStorage
-    setTimeout(() => {
-      const newQuery = {
-        id: 'query_' + Math.random().toString(36).substr(2, 9),
-        firstName,
-        lastName,
-        email,
-        company,
-        inquiryType,
-        message,
-        date: new Date().toISOString(),
-        status: 'pending',
-      };
-
-      const savedQueries = localStorage.getItem('contact_queries');
-      let queries = [];
-      if (savedQueries) {
-        try {
-          queries = JSON.parse(savedQueries);
-        } catch (err) {
-          console.error(err);
-        }
-      }
-      queries.unshift(newQuery);
-      localStorage.setItem('contact_queries', JSON.stringify(queries));
-
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      await fetch(`${API_BASE}/api/customer/inquiries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          company: data.company || '',
+          inquiryType: selectedOption.label,
+          message: data.message,
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to submit inquiry to backend API:', e);
+    } finally {
       setFormStatus('success');
-    }, 1500);
+      reset();
+    }
   };
 
   return (
@@ -226,7 +248,12 @@ export default function ContactPage() {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form
+                  onSubmit={(e) => {
+                    void handleSubmit(onSubmit)(e);
+                  }}
+                  className="space-y-6"
+                >
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label
@@ -238,10 +265,18 @@ export default function ContactPage() {
                       <input
                         type="text"
                         id="firstName"
-                        name="firstName"
-                        required
-                        className="w-full px-4 py-3 rounded-lg border border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20 outline-none transition-all bg-wellness-gray-100/50"
+                        {...register('firstName')}
+                        className={`w-full px-4 py-3 rounded-lg border outline-none transition-all bg-wellness-gray-100/50 ${
+                          errors.firstName
+                            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
+                            : 'border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20'
+                        }`}
                       />
+                      {errors.firstName && (
+                        <p className="text-xs text-red-500 mt-1 font-medium">
+                          {errors.firstName.message}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label
@@ -253,10 +288,18 @@ export default function ContactPage() {
                       <input
                         type="text"
                         id="lastName"
-                        name="lastName"
-                        required
-                        className="w-full px-4 py-3 rounded-lg border border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20 outline-none transition-all bg-wellness-gray-100/50"
+                        {...register('lastName')}
+                        className={`w-full px-4 py-3 rounded-lg border outline-none transition-all bg-wellness-gray-100/50 ${
+                          errors.lastName
+                            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
+                            : 'border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20'
+                        }`}
                       />
+                      {errors.lastName && (
+                        <p className="text-xs text-red-500 mt-1 font-medium">
+                          {errors.lastName.message}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -271,10 +314,18 @@ export default function ContactPage() {
                       <input
                         type="email"
                         id="email"
-                        name="email"
-                        required
-                        className="w-full px-4 py-3 rounded-lg border border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20 outline-none transition-all bg-wellness-gray-100/50"
+                        {...register('email')}
+                        className={`w-full px-4 py-3 rounded-lg border outline-none transition-all bg-wellness-gray-100/50 ${
+                          errors.email
+                            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
+                            : 'border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20'
+                        }`}
                       />
+                      {errors.email && (
+                        <p className="text-xs text-red-500 mt-1 font-medium">
+                          {errors.email.message}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label
@@ -286,7 +337,7 @@ export default function ContactPage() {
                       <input
                         type="text"
                         id="company"
-                        name="company"
+                        {...register('company')}
                         className="w-full px-4 py-3 rounded-lg border border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20 outline-none transition-all bg-wellness-gray-100/50"
                       />
                     </div>
@@ -302,19 +353,16 @@ export default function ContactPage() {
                         icon: opt.icon,
                       }))}
                       selectedValue={selectedInquiryId}
-                      onChange={setSelectedInquiryId}
+                      onChange={(val) => {
+                        setValue('inquiryType', val, { shouldValidate: true });
+                      }}
                       required
                     />
-                    <input
-                      type="hidden"
-                      name="inquiry"
-                      value={
-                        (
-                          inquiryOptions.find((o) => o.id === selectedInquiryId) ||
-                          inquiryOptions[0]
-                        ).label
-                      }
-                    />
+                    {errors.inquiryType && (
+                      <p className="text-xs text-red-500 mt-1 font-medium">
+                        {errors.inquiryType.message}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -326,17 +374,25 @@ export default function ContactPage() {
                     </label>
                     <textarea
                       id="message"
-                      name="message"
-                      required
+                      {...register('message')}
                       rows={5}
-                      className="w-full px-4 py-3 rounded-lg border border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20 outline-none transition-all bg-wellness-gray-100/50 resize-none"
+                      className={`w-full px-4 py-3 rounded-lg border outline-none transition-all bg-wellness-gray-100/50 resize-none ${
+                        errors.message
+                          ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
+                          : 'border-wellness-gray-200 focus:border-wellness-green focus:ring-2 focus:ring-wellness-green/20'
+                      }`}
                     ></textarea>
+                    {errors.message && (
+                      <p className="text-xs text-red-500 mt-1 font-medium">
+                        {errors.message.message}
+                      </p>
+                    )}
                   </div>
 
                   <button
                     type="submit"
                     disabled={formStatus === 'submitting'}
-                    className="w-full bg-wellness-navy text-white py-4 rounded-lg font-medium hover:bg-wellness-green transition-colors disabled:opacity-70 flex justify-center items-center"
+                    className="w-full bg-wellness-navy text-white py-4 rounded-lg font-medium hover:bg-wellness-green transition-colors disabled:opacity-70 flex justify-center items-center cursor-pointer"
                   >
                     {formStatus === 'submitting' ? (
                       <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>

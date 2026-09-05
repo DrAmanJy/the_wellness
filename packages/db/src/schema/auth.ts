@@ -1,4 +1,6 @@
-import { pgTable, text, timestamp, boolean, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, pgEnum } from 'drizzle-orm/pg-core';
+
+export const userRoleEnum = pgEnum('user_role', ['customer', 'admin']);
 
 // Better Auth core tables
 export const user = pgTable('user', {
@@ -7,6 +9,7 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('emailVerified').notNull(),
   image: text('image'),
+  role: userRoleEnum('role').default('customer').notNull(),
   createdAt: timestamp('createdAt').notNull(),
   updatedAt: timestamp('updatedAt').notNull(),
 });
@@ -21,7 +24,7 @@ export const session = pgTable('session', {
   userAgent: text('userAgent'),
   userId: text('userId')
     .notNull()
-    .references(() => user.id),
+    .references(() => user.id, { onDelete: 'cascade' }),
 });
 
 export const account = pgTable('account', {
@@ -31,7 +34,7 @@ export const account = pgTable('account', {
   issuer: text('issuer'),
   userId: text('userId')
     .notNull()
-    .references(() => user.id),
+    .references(() => user.id, { onDelete: 'cascade' }),
   accessToken: text('accessToken'),
   refreshToken: text('refreshToken'),
   idToken: text('idToken'),
@@ -51,37 +54,3 @@ export const verification = pgTable('verification', {
   createdAt: timestamp('createdAt'),
   updatedAt: timestamp('updatedAt'),
 });
-
-// App tables
-export const employee = pgTable('employee', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .unique()
-    .references(() => user.id),
-  employeeCode: text('employee_code').notNull().unique(),
-  department: text('department').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-export const role = pgTable('role', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-export const userRole = pgTable(
-  'user_role',
-  {
-    userId: text('user_id')
-      .notNull()
-      .references(() => user.id),
-    roleId: text('role_id')
-      .notNull()
-      .references(() => role.id),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.userId, t.roleId] })],
-);

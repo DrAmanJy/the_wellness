@@ -7,7 +7,6 @@ import CartDrawer from './CartDrawer';
 import Footer from './Footer';
 import Navbar from './Navbar';
 import PageLoader from './PageLoader';
-import WishlistDrawer from './WishlistDrawer';
 
 import { authClient } from '@/lib/auth-client';
 
@@ -40,7 +39,6 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         {children}
       </main>
       <CartDrawer />
-      <WishlistDrawer />
       <Footer />
     </>
   );

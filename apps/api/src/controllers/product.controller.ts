@@ -1,13 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 
-import { UnauthorizedError } from '@wellness/utils';
+import { NotFoundError } from '@wellness/utils';
 import {
   CreateProductSchema,
   UpdateProductSchema,
-  UpdateProductCategoriesSchema,
-  CursorSchema,
-  LimitSchema,
+  paginationSchema,
+  AddProductImagesSchema,
+  ReorderProductImagesSchema,
 } from '@wellness/validation';
 
 import type { AuthContext } from '../middleware/auth.middleware';
@@ -16,50 +16,25 @@ import { productService } from '../services/product.service';
 export class ProductController {
   async getPublicProducts(req: Request, res: Response, next: NextFunction) {
     try {
-      // Reject array query values — only accept scalar
-      const rawLimit = req.query.limit;
-      if (Array.isArray(rawLimit)) {
-        return res.status(400).json({
-          success: false,
-          error: { code: 'BAD_REQUEST', message: 'Limit must be between 1 and 100' },
-        });
-      }
+      const { page, limit } = paginationSchema.parse({
+        page: req.query.page,
+        limit: req.query.limit ?? 20,
+      });
 
-      const limitResult =
-        rawLimit != null ? LimitSchema.safeParse(rawLimit) : { success: true as const, data: 20 };
-      if (!limitResult.success) {
-        return res.status(400).json({
-          success: false,
-          error: { code: 'BAD_REQUEST', message: 'Limit must be between 1 and 100' },
-        });
-      }
-      const limit = limitResult.data;
-
-      let cursorObj: { createdAt: Date; id: string } | undefined;
-      if (req.query.cursor) {
-        const cursorResult = CursorSchema.safeParse(req.query.cursor);
-        if (!cursorResult.success) {
-          return res.status(400).json({
-            success: false,
-            error: {
-              code: 'BAD_REQUEST',
-              message: 'Invalid cursor format',
-            },
-          });
-        }
-        cursorObj = cursorResult.data;
-      }
-      const data = await productService.getPublicProducts(limit, cursorObj);
+      const data = await productService.getPublicProducts(page, limit);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
     }
   }
 
-  async getProductBySlug(req: Request, res: Response, next: NextFunction) {
+  async getProductById(req: Request, res: Response, next: NextFunction) {
     try {
-      const slug = z.string().trim().min(1).parse(req.params.slug);
-      const data = await productService.getProductBySlug(slug);
+      const parsedId = z.string().uuid().safeParse(req.params.id);
+      if (!parsedId.success) {
+        throw new NotFoundError('Product not found');
+      }
+      const data = await productService.getProductById(parsedId.data);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -69,11 +44,19 @@ export class ProductController {
   async createProduct(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
       const validatedData = CreateProductSchema.parse(req.body);
-      if (!req.auth?.userId) throw new UnauthorizedError();
-      const { categoryIds, ...productData } = validatedData;
+      const { inventoryQty, availableQty, reservedQty, images, image, ...rest } = validatedData;
       const data = await productService.createProduct(
-        { ...productData, ...(categoryIds !== undefined ? { categoryIds } : {}) },
-        req.auth.userId,
+        {
+          ...rest,
+          ...(inventoryQty !== undefined && { inventoryQty }),
+          ...(availableQty !== undefined && { availableQty }),
+          ...(reservedQty !== undefined && { reservedQty }),
+          ...(images !== undefined && { images }),
+          ...(image !== undefined && { image }),
+          sellingPrice: String(validatedData.sellingPrice),
+          mrp: String(validatedData.mrp),
+        },
+        req.auth?.userId,
       );
       res.status(201).json({ success: true, data });
     } catch (error) {
@@ -83,26 +66,23 @@ export class ProductController {
 
   async updateProduct(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
     try {
-      // NOTE: Using partial validation for updates
       const validatedData = UpdateProductSchema.parse(req.body);
-      if (!req.auth?.userId) throw new UnauthorizedError();
-      const { categoryIds, ...productData } = validatedData;
+      const id = z.string().uuid('Invalid product ID format').parse(req.params.id);
 
       const updatePayload: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(productData)) {
+      for (const [key, value] of Object.entries(validatedData)) {
         if (value !== undefined) {
           updatePayload[key] = value;
         }
       }
-      if (categoryIds !== undefined) {
-        updatePayload.categoryIds = categoryIds;
+      if (validatedData.sellingPrice !== undefined) {
+        updatePayload.sellingPrice = String(validatedData.sellingPrice);
+      }
+      if (validatedData.mrp !== undefined) {
+        updatePayload.mrp = String(validatedData.mrp);
       }
 
-      const data = await productService.updateProduct(
-        z.string().uuid().parse(req.params.id),
-        updatePayload,
-        req.auth.userId,
-      );
+      const data = await productService.updateProduct(id, updatePayload, req.auth?.userId);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
@@ -111,24 +91,52 @@ export class ProductController {
 
   async deleteProduct(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await productService.deleteProduct(z.string().uuid().parse(req.params.id));
+      const id = z.string().uuid('Invalid product ID format').parse(req.params.id);
+      const data = await productService.deleteProduct(id);
       res.json({ success: true, data });
     } catch (error) {
       next(error);
     }
   }
 
-  async updateCategories(req: Request & { auth?: AuthContext }, res: Response, next: NextFunction) {
+  async getProductImages(req: Request, res: Response, next: NextFunction) {
     try {
-      const validatedData = UpdateProductCategoriesSchema.parse(req.body);
-      if (!req.auth?.userId) throw new UnauthorizedError();
-      await productService.updateProductCategories(
-        z.string().uuid().parse(req.params.id),
-        validatedData.categoryIds,
-        validatedData.primaryCategoryId || undefined,
-        req.auth.userId,
-      );
-      res.json({ success: true });
+      const id = z.string().uuid('Invalid product ID format').parse(req.params.id);
+      const data = await productService.getProductImages(id);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async addProductImages(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = z.string().uuid('Invalid product ID format').parse(req.params.id);
+      const { images } = AddProductImagesSchema.parse(req.body);
+      const data = await productService.addProductImages(id, images);
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async reorderProductImages(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = z.string().uuid('Invalid product ID format').parse(req.params.id);
+      const { imageOrders } = ReorderProductImagesSchema.parse(req.body);
+      const data = await productService.reorderProductImages(id, imageOrders);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteProductImage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = z.string().uuid('Invalid product ID format').parse(req.params.id);
+      const imageId = z.string().uuid('Invalid image ID format').parse(req.params.imageId);
+      const data = await productService.deleteProductImage(id, imageId);
+      res.json({ success: true, data });
     } catch (error) {
       next(error);
     }

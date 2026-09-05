@@ -1,53 +1,75 @@
 import { Router } from 'express';
 
+import {
+  bindProcedure,
+  getPublicProductsProcedure,
+  getProductByIdProcedure,
+  createProductProcedure,
+  updateProductProcedure,
+  deleteProductProcedure,
+  getProductImagesProcedure,
+  addProductImagesProcedure,
+  reorderProductImagesProcedure,
+  deleteProductImageProcedure,
+} from '@wellness/contracts';
 import { asyncHandler } from '@wellness/utils';
 
 import { productController } from '../controllers/product.controller';
-import { requireAuth } from '../middleware/auth.middleware';
-import { requireRole, resolveRoles } from '../middleware/authorization.middleware';
 
 const router = Router();
 
-// Public Routes
-router.get(
-  '/',
+bindProcedure(
+  router,
+  getPublicProductsProcedure,
   asyncHandler((req, res, next) => productController.getPublicProducts(req, res, next)),
 );
-router.get(
-  '/:slug',
-  asyncHandler((req, res, next) => productController.getProductBySlug(req, res, next)),
+
+bindProcedure(
+  router,
+  getProductImagesProcedure,
+  asyncHandler((req, res, next) => productController.getProductImages(req, res, next)),
 );
 
-// Admin Routes
-router.post(
-  '/',
-  requireAuth,
-  resolveRoles,
-  requireRole('employee', 'admin'),
+bindProcedure(
+  router,
+  getProductByIdProcedure,
+  asyncHandler((req, res, next) => productController.getProductById(req, res, next)),
+);
+
+bindProcedure(
+  router,
+  createProductProcedure,
   asyncHandler((req, res, next) => productController.createProduct(req, res, next)),
 );
-router.patch(
-  '/:id',
-  requireAuth,
-  resolveRoles,
-  requireRole('employee', 'admin'),
+
+bindProcedure(
+  router,
+  updateProductProcedure,
   asyncHandler((req, res, next) => productController.updateProduct(req, res, next)),
 );
-router.delete(
-  '/:id',
-  requireAuth,
-  resolveRoles,
-  requireRole('employee', 'admin'),
+
+bindProcedure(
+  router,
+  deleteProductProcedure,
   asyncHandler((req, res, next) => productController.deleteProduct(req, res, next)),
 );
 
-// Category relationships
-router.put(
-  '/:id/categories',
-  requireAuth,
-  resolveRoles,
-  requireRole('employee', 'admin'),
-  asyncHandler((req, res, next) => productController.updateCategories(req, res, next)),
+bindProcedure(
+  router,
+  addProductImagesProcedure,
+  asyncHandler((req, res, next) => productController.addProductImages(req, res, next)),
+);
+
+bindProcedure(
+  router,
+  reorderProductImagesProcedure,
+  asyncHandler((req, res, next) => productController.reorderProductImages(req, res, next)),
+);
+
+bindProcedure(
+  router,
+  deleteProductImageProcedure,
+  asyncHandler((req, res, next) => productController.deleteProductImage(req, res, next)),
 );
 
 export default router;

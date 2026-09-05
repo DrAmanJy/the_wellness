@@ -3,3 +3,7 @@ export * from './category';
 export * from './product';
 export * from './cart';
 export * from './search';
+export * from './order';
+export * from './payment';
+export * from './customer';
+export * from './promotion';

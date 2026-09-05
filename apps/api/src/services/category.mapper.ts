@@ -6,10 +6,8 @@ export function toCategoryListDTO(category: typeof categories.$inferSelect): Cat
     id: category.id,
     name: category.name,
     slug: category.slug,
-    imageUrl: category.imageUrl,
-    parentId: category.parentId,
+    description: category.description,
     isActive: category.isActive,
-    sortOrder: category.sortOrder,
   };
 }
 
@@ -19,10 +17,7 @@ export function toCategoryDetailDTO(category: typeof categories.$inferSelect): C
     name: category.name,
     slug: category.slug,
     description: category.description,
-    imageUrl: category.imageUrl,
-    parentId: category.parentId,
     isActive: category.isActive,
-    sortOrder: category.sortOrder,
     createdAt: category.createdAt.toISOString(),
     updatedAt: category.updatedAt.toISOString(),
   };
@@ -36,10 +31,7 @@ export function toCategoryMutationDTO(
     name: category.name,
     slug: category.slug,
     description: category.description,
-    imageUrl: category.imageUrl,
-    parentId: category.parentId,
     isActive: category.isActive,
-    sortOrder: category.sortOrder,
     createdAt: category.createdAt.toISOString(),
     updatedAt: category.updatedAt.toISOString(),
   };

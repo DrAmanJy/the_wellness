@@ -1,31 +1,35 @@
 export type CartItemProductDTO = {
   id: string;
   name: string;
-  slug: string;
-  image: string | null;
+  image?: string | null | undefined;
+  primaryImage?: string | null | undefined;
+  price?: number | null | undefined;
+  sellingPrice?: string | number | null | undefined;
+  mrp?: string | number | null | undefined;
+  type?: string | null | undefined;
+  categoryName?: string | null | undefined;
+  description?: string | null | undefined;
 };
 
 export type CartItemDTO = {
   id: string;
-  variantId: string;
+  cartId: string;
+  productId: string;
   quantity: number;
-  sku: string;
-  price: string;
-  subtotal: string;
-  product: CartItemProductDTO;
+  product?: CartItemProductDTO | null;
 };
 
 export type CartDTO = {
   id: string;
+  userId: string | null;
   status: 'active' | 'converted' | 'abandoned';
   items: CartItemDTO[];
   itemCount: number;
-  subtotal: string;
   updatedAt: string;
 };
 
 export type AddCartItemDTO = {
-  variantId: string;
+  productId: string;
   quantity: number;
 };
 

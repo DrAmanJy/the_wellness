@@ -92,7 +92,11 @@ export default function NewsAndMedia() {
 
         <div className="news-grid grid grid-cols-1 md:grid-cols-3 gap-8">
           {news.map((item) => (
-            <Link key={item.id} href={`/media/${item.id}`} className="news-card group block">
+            <Link
+              key={item.id}
+              href={`/media/${String(item.id)}`}
+              className="news-card group block"
+            >
               <div className="relative aspect-[3/2] rounded-xl overflow-hidden mb-6">
                 <Image
                   src={item.image}

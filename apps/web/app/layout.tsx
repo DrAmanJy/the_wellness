@@ -1,3 +1,4 @@
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import type { Metadata } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 
@@ -5,9 +6,6 @@ import './globals.css';
 import LayoutWrapper from '@/components/layout/LayoutWrapper';
 import ReduxProvider from '@/components/providers/ReduxProvider';
 import { CartProvider } from '@/context/CartContext';
-import { WishlistProvider } from '@/context/WishlistContext';
-
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-heading' });
@@ -31,7 +29,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jakarta.variable} scroll-smooth`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${jakarta.variable} scroll-smooth`}
+      data-scroll-behavior="smooth"
+    >
       <body
         className="bg-wellness-white text-wellness-charcoal antialiased flex flex-col min-h-screen"
         suppressHydrationWarning
@@ -39,9 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppRouterCacheProvider>
           <ReduxProvider>
             <CartProvider>
-              <WishlistProvider>
-                <LayoutWrapper>{children}</LayoutWrapper>
-              </WishlistProvider>
+              <LayoutWrapper>{children}</LayoutWrapper>
             </CartProvider>
           </ReduxProvider>
         </AppRouterCacheProvider>

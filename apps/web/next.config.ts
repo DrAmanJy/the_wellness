@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type { NextConfig } from 'next';
 
 interface WebpackConfig {
@@ -9,6 +11,7 @@ interface WebpackConfig {
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -35,10 +38,43 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.googleusercontent.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.cloudinary.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
   output: 'standalone',
   transpilePackages: ['motion'],
+  rewrites() {
+    const apiHost = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    return Promise.resolve([
+      {
+        source: '/api/:path*',
+        destination: `${apiHost}/api/:path*`,
+      },
+    ]);
+  },
   webpack: (config: WebpackConfig, { dev }: { dev: boolean }): WebpackConfig => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.
     // Do not modify—file watching is disabled to prevent flickering during agent edits.

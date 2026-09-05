@@ -35,6 +35,11 @@ const envSchema = z
 
     CORS_ORIGIN: z.string().min(1, 'CORS Origin is required'),
 
+    CLOUDINARY_CLOUD_NAME: z.string().optional(),
+    CLOUDINARY_API_KEY: z.string().optional(),
+    CLOUDINARY_API_SECRET: z.string().optional(),
+    CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
+
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   })
   .superRefine((val, ctx) => {

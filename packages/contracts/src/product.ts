@@ -1,92 +1,91 @@
-import { JsonObject } from './common';
+import { JsonValue } from './common';
+
+export type ProductImageDTO = {
+  id: string;
+  productId: string;
+  url: string;
+  altText: string | null;
+  displayOrder: number;
+  isPrimary: boolean;
+  createdAt: string;
+};
 
 export type ProductListDTO = {
   id: string;
   name: string;
-  slug: string;
-  shortDescription: string | null;
-  brand: string | null;
-  primaryImage: string | null;
-  startingPrice: number | null;
-  compareAtPrice: number | null;
+  slug?: string;
+  description: string | null;
+  sellingPrice: string;
+  mrp: string;
+  stockQty: number;
+  inventoryQty?: number | null;
+  availableQty?: number | null;
+  reservedQty?: number | null;
+  stockStatus: 'in_stock' | 'out_of_stock' | 'discontinued';
+  isBestSeller: boolean;
   isFeatured: boolean;
+  isNewest: boolean;
+  categoryId: string | null;
+  categoryName?: string | null;
+  category?: string | null;
+  primaryImage?: string | null;
+  images?: ProductImageDTO[];
+  startingPrice?: number | null;
+  compareAtPrice?: number | null;
 };
 
 export type SearchSuggestionDTO = {
   id: string;
   label: string;
-  slug: string;
+  slug?: string;
   type: 'product' | 'category';
+  price?: string | null;
+  image?: string | null;
 };
 
 export type ProductMutationDTO = {
   id: string;
   name: string;
-  slug: string;
   description: string | null;
-  shortDescription: string | null;
-  brand: string | null;
-  status: 'draft' | 'active' | 'archived';
-  isFeatured: boolean;
-  categoryPrimaryId: string | null;
+  ingrediants: JsonValue | null;
   tags: string[] | null;
-  attributes: JsonObject | null;
-  specifications: JsonObject | null;
-  ingredients: JsonObject | null;
-  benefits: JsonObject | null;
-  seo: JsonObject | null;
-  createdAt: string;
-  updatedAt: string;
+  sellingPrice: string;
+  mrp: string;
+  stockQty: number;
+  inventoryQty?: number | null;
+  availableQty?: number | null;
+  reservedQty?: number | null;
+  stockStatus: 'in_stock' | 'out_of_stock' | 'discontinued';
+  isBestSeller: boolean;
+  isFeatured: boolean;
+  isNewest: boolean;
+  lastUpdated: string;
+  categoryId: string | null;
+  features: JsonValue | null;
+  images?: ProductImageDTO[];
 };
 
 export type ProductDetailDTO = {
   id: string;
   name: string;
-  slug: string;
   description: string | null;
-  shortDescription: string | null;
-  brand: string | null;
-  status: 'draft' | 'active' | 'archived';
-  isFeatured: boolean;
-  categoryPrimaryId: string | null;
+  ingrediants: JsonValue | null;
   tags: string[] | null;
-  attributes: JsonObject | null;
-  specifications: JsonObject | null;
-  ingredients: JsonObject | null;
-  benefits: JsonObject | null;
-  seo: JsonObject | null;
-  categories: { id: string; name: string; slug: string }[];
-  variants: VariantDTO[];
-  images: ProductImageDTO[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type VariantDTO = {
-  id: string;
-  productId: string;
-  name: string;
-  sku: string;
-  price: string;
-  compareAtPrice: string | null;
-  currency: string;
-  weight: string | null;
-  length: string | null;
-  width: string | null;
-  height: string | null;
-  isActive: boolean;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ProductImageDTO = {
-  id: string;
-  productId: string;
-  variantId: string | null;
-  url: string;
-  altText: string | null;
-  sortOrder: number;
-  isPrimary: boolean;
-  createdAt: string;
+  sellingPrice: string;
+  mrp: string;
+  stockQty: number;
+  inventoryQty?: number | null;
+  availableQty?: number | null;
+  reservedQty?: number | null;
+  stockStatus: 'in_stock' | 'out_of_stock' | 'discontinued';
+  isBestSeller: boolean;
+  isFeatured: boolean;
+  isNewest: boolean;
+  lastUpdated: string;
+  categoryId: string | null;
+  categoryName?: string | null;
+  category?: string | null;
+  features: JsonValue | null;
+  primaryImage?: string | null;
+  images?: ProductImageDTO[];
 };

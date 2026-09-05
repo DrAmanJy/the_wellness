@@ -2,27 +2,50 @@
 
 import React, { useRef, useEffect } from 'react';
 import { Provider } from 'react-redux';
-import { makeStore, AppStore } from '@/lib/redux/store';
+
 import { authClient } from '@/lib/auth-client';
-import { useAppDispatch } from '@/lib/redux/hooks';
 import { setAuth, clearAuth } from '@/lib/redux/authSlice';
+import { useAppDispatch, useAppSelector } from '@/lib/redux/hooks';
+import { makeStore, AppStore } from '@/lib/redux/store';
 
 function SessionSync({ children }: { children: React.ReactNode }) {
   const dispatch = useAppDispatch();
-  const { data: session } = authClient.useSession();
+  const reduxToken = useAppSelector((state) => state.auth.session?.token);
+  const reduxRole = useAppSelector((state) => state.auth.user?.role);
+  const isInitialized = useAppSelector((state) => state.auth.isInitialized);
+  const { data: session, isPending } = authClient.useSession();
+
+  const sessionToken = session?.session.token;
+  const currentRole = (session?.user as { role?: string } | undefined)?.role;
+  const hasUserAndSession = Boolean(session);
 
   useEffect(() => {
+    if (isPending) return;
+
     if (session) {
-      dispatch(
-        setAuth({
-          user: session.user,
-          session: session.session,
-        }),
-      );
+      if (!isInitialized || sessionToken !== reduxToken || currentRole !== reduxRole) {
+        dispatch(
+          setAuth({
+            user: session.user,
+            session: session.session,
+          }),
+        );
+      }
     } else {
-      dispatch(clearAuth());
+      if (!isInitialized || reduxToken) {
+        dispatch(clearAuth());
+      }
     }
-  }, [session, dispatch]);
+  }, [
+    isPending,
+    hasUserAndSession,
+    sessionToken,
+    currentRole,
+    reduxToken,
+    reduxRole,
+    isInitialized,
+    dispatch,
+  ]);
 
   return <>{children}</>;
 }

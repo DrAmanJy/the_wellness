@@ -3,8 +3,12 @@ import { describe, it, expect } from 'vitest';
 import {
   CreateCategorySchema,
   CreateProductSchema,
-  CreateVariantSchema,
+  AddItemSchema,
   paginationSchema,
+  CreateAddressSchema,
+  createOrderSchema,
+  createPaymentOrderSchema,
+  SearchSchema,
 } from './index';
 
 describe('Validation Schemas', () => {
@@ -62,169 +66,205 @@ describe('Validation Schemas', () => {
       const result = CreateCategorySchema.safeParse({ name: 'Test', slug: longSlug });
       expect(result.success).toBe(false);
     });
-
-    it('validates parentId as UUID', () => {
-      const result = CreateCategorySchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        parentId: 'invalid-uuid',
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it('enforces 255-character maximum on description', () => {
-      const result = CreateCategorySchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        description: 'a'.repeat(256),
-      });
-      expect(result.success).toBe(false);
-
-      const ok = CreateCategorySchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        description: 'a'.repeat(255),
-      });
-      expect(ok.success).toBe(true);
-    });
-
-    it('rejects non-HTTP imageUrl schemes (javascript:, data:)', () => {
-      const js = CreateCategorySchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        imageUrl: 'javascript:alert(1)',
-      });
-      expect(js.success).toBe(false);
-
-      const data = CreateCategorySchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        imageUrl: 'data:text/html,<h1>hi</h1>',
-      });
-      expect(data.success).toBe(false);
-
-      const https = CreateCategorySchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        imageUrl: 'https://example.com/image.jpg',
-      });
-      expect(https.success).toBe(true);
-    });
   });
 
   describe('CreateProductSchema', () => {
     it('accepts valid product payload', () => {
       const result = CreateProductSchema.safeParse({
         name: 'Test Product',
-        slug: 'test-product',
+        description: 'Comprehensive test product description.',
+        sellingPrice: 100,
+        mrp: 150,
+        images: ['http://example.com/1.jpg', 'http://example.com/2.jpg'],
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.status).toBe('draft'); // Default value
+        expect(result.data.stockStatus).toBe('in_stock');
       }
+    });
+
+    it('rejects product payload with fewer than 2 images', () => {
+      const result = CreateProductSchema.safeParse({
+        name: 'Test Product',
+        description: 'Comprehensive test product description.',
+        sellingPrice: 100,
+        mrp: 150,
+        images: [],
+      });
+      expect(result.success).toBe(false);
     });
 
     it('rejects names containing HTML tag boundary characters', () => {
       const result1 = CreateProductSchema.safeParse({
         name: 'Test <script>',
-        slug: 'test-product',
+        description: 'Comprehensive test product description.',
+        sellingPrice: 100,
+        mrp: 150,
+        images: ['http://example.com/1.jpg', 'http://example.com/2.jpg'],
       });
       expect(result1.success).toBe(false);
-
-      const result2 = CreateProductSchema.safeParse({ name: 'Test >', slug: 'test-product' });
-      expect(result2.success).toBe(false);
     });
 
-    it('rejects invalid status', () => {
+    it('rejects mrp less than sellingPrice', () => {
       const result = CreateProductSchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        status: 'invalid-status',
+        name: 'Test Product',
+        description: 'Comprehensive test product description.',
+        sellingPrice: 200,
+        mrp: 100,
+        images: ['http://example.com/1.jpg', 'http://example.com/2.jpg'],
       });
       expect(result.success).toBe(false);
     });
 
-    it('prevents excessively long shortDescription (500 char limit)', () => {
-      const longDesc = 'a'.repeat(501);
+    it('handles empty string categoryId by preprocessing to null', () => {
       const result = CreateProductSchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        shortDescription: longDesc,
+        name: 'Test Product',
+        description: 'Comprehensive test product description.',
+        sellingPrice: 100,
+        mrp: 150,
+        categoryId: '',
+        images: ['http://example.com/1.jpg', 'http://example.com/2.jpg'],
       });
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.categoryId).toBeNull();
+      }
     });
 
-    it('enforces maximum length on description (10000 char limit)', () => {
-      const tooLong = CreateProductSchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        description: 'a'.repeat(10001),
+    it('rejects creating product with 0 stock quantity', () => {
+      const result = CreateProductSchema.safeParse({
+        name: 'Zero Stock Product',
+        sellingPrice: 100,
+        mrp: 150,
+        stockQty: 0,
+        images: ['http://example.com/1.jpg', 'http://example.com/2.jpg'],
       });
-      expect(tooLong.success).toBe(false);
-
-      const ok = CreateProductSchema.safeParse({
-        name: 'Test',
-        slug: 'test',
-        description: 'a'.repeat(10000),
-      });
-      expect(ok.success).toBe(true);
+      expect(result.success).toBe(false);
     });
   });
 
-  describe('CreateVariantSchema', () => {
-    it('accepts valid variant payload', () => {
-      const result = CreateVariantSchema.safeParse({
-        name: 'Test Variant',
-        sku: 'TEST-01',
-        price: 19.99,
+  describe('AddItemSchema', () => {
+    it('accepts valid cart item payload', () => {
+      const result = AddItemSchema.safeParse({
+        productId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        quantity: 2,
       });
       expect(result.success).toBe(true);
     });
 
-    it('rejects negative prices', () => {
-      const result = CreateVariantSchema.safeParse({
-        name: 'Test',
-        sku: 'TEST',
-        price: -10,
+    it('rejects non-positive quantity', () => {
+      const result = AddItemSchema.safeParse({
+        productId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        quantity: 0,
       });
       expect(result.success).toBe(false);
     });
 
-    it('rejects negative compareAtPrice', () => {
-      const result = CreateVariantSchema.safeParse({
-        name: 'Test',
-        sku: 'TEST',
-        price: 10,
-        compareAtPrice: -5,
+    it('rejects quantity over 1000', () => {
+      const result = AddItemSchema.safeParse({
+        productId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        quantity: 1001,
       });
       expect(result.success).toBe(false);
     });
+  });
 
-    it('rejects compareAtPrice less than price', () => {
-      const result = CreateVariantSchema.safeParse({
-        name: 'Test',
-        sku: 'TEST',
-        price: 50,
-        compareAtPrice: 40,
+  describe('CreateAddressSchema', () => {
+    it('accepts valid address payload', () => {
+      const result = CreateAddressSchema.safeParse({
+        fullName: 'Jane Doe',
+        phone: '+919876543210',
+        street: '123 Health Ave',
+        city: 'Mumbai',
+        state: 'Maharashtra',
+        pincode: '400001',
       });
-      expect(result.success).toBe(false);
-
-      const ok = CreateVariantSchema.safeParse({
-        name: 'Test',
-        sku: 'TEST',
-        price: 50,
-        compareAtPrice: 50,
-      });
-      expect(ok.success).toBe(true);
+      expect(result.success).toBe(true);
     });
 
-    it('requires exact 3 character currency code', () => {
-      const result = CreateVariantSchema.safeParse({
-        name: 'Test',
-        sku: 'TEST',
-        price: 10,
-        currency: 'US', // Too short
+    it('rejects HTML tags in address fields', () => {
+      const result = CreateAddressSchema.safeParse({
+        fullName: 'Jane <script>alert(1)</script>',
+        phone: '+919876543210',
+        street: '123 Health Ave',
+        city: 'Mumbai',
+        state: 'Maharashtra',
+        pincode: '400001',
       });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('createOrderSchema', () => {
+    it('accepts valid order payload', () => {
+      const result = createOrderSchema.safeParse({
+        shippingAddress: {
+          fullName: 'Jane Doe',
+          phone: '+919876543210',
+          email: 'jane@example.com',
+          street: '123 Health Ave',
+          city: 'Mumbai',
+          state: 'Maharashtra',
+          pincode: '400001',
+        },
+        payment: {
+          amount: 500,
+        },
+        items: [
+          {
+            productId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+            quantity: 1,
+            unitPrice: 500,
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects non-UUID productId in order items', () => {
+      const result = createOrderSchema.safeParse({
+        shippingAddress: {
+          fullName: 'Jane Doe',
+          phone: '+919876543210',
+          email: 'jane@example.com',
+          street: '123 Health Ave',
+          city: 'Mumbai',
+          state: 'Maharashtra',
+          pincode: '400001',
+        },
+        payment: { amount: 500 },
+        items: [
+          {
+            productId: 'invalid-product-id',
+            quantity: 1,
+            unitPrice: 500,
+          },
+        ],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('createPaymentOrderSchema', () => {
+    it('accepts valid payment order payload', () => {
+      const result = createPaymentOrderSchema.safeParse({ amount: 1000 });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects amounts exceeding PostgreSQL 32-bit integer limit', () => {
+      const result = createPaymentOrderSchema.safeParse({ amount: 3000000000 });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('SearchSchema', () => {
+    it('accepts valid search query', () => {
+      const result = SearchSchema.safeParse({ q: 'wellness' });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects search query containing HTML tags', () => {
+      const result = SearchSchema.safeParse({ q: 'wellness<script>' });
       expect(result.success).toBe(false);
     });
   });
